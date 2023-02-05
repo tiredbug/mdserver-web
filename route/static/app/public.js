@@ -16,6 +16,19 @@ function toSize(a) {
 	}
 }
 
+function toTrim(x) {
+    return x.replace(/^\s+|\s+$/gm,'');
+}
+
+function inArray(f, arr){
+	for (var i = 0; i < arr.length; i++) {
+		if (f == arr[i]) {
+			return true;
+		}
+	}
+	return false;
+}
+
 //表格头固定
 function tableFixed(name) {
     var tableName = document.querySelector('#' + name);
@@ -89,6 +102,19 @@ function isValidIP(ip) {
 
 function isContains(str, substr) {
     return str.indexOf(substr) >= 0;
+}
+
+
+function filterPath(path){
+	var path_arr = path.split('/');
+	var path_new = [];
+	for (var i = 0; i < path_arr.length; i++) {
+		if (path_arr[i]!=''){
+			path_new.push(path_arr[i]);
+		}
+	}
+	var rdata = "/"+path_new.join('/');
+	return rdata;
 }
 
 function msgTpl(msg, args){
@@ -197,6 +223,47 @@ function getFormatTime(tm, format) {
 }
 
 
+
+function changePathCallback(default_dir, callback) {
+
+	var c = layer.open({
+		type: 1,
+		area: "650px",
+		title: '选择目录',
+		closeBtn: 1,
+		shift: 5,
+		shadeClose: false,
+		content: "<div class='changepath'><div class='path-top'><button type='button' class='btn btn-default btn-sm' onclick='backFile()'><span class='glyphicon glyphicon-share-alt'></span>返回</button>\
+		<div class='place' id='PathPlace'>当前路径：<span></span></div></div><div class='path-con'><div class='path-con-left'><dl><dt id='changecomlist' onclick='backMyComputer()'>计算机</dt></dl></div>\
+		<div class='path-con-right'><ul class='default' id='computerDefautl'></ul><div class='file-list divtable'>\
+			<table class='table table-hover' style='border:0 none'>\
+				<thead><tr class='file-list-head'><th width='40%'>文件名</th><th width='20%'>修改时间</th><th width='10%'>权限</th><th width='10%'>所有者</th><th width='10%'></th></tr></thead>\
+				<tbody id='tbody' class='list-list'></tbody></table></div></div></div></div><div class='getfile-btn' style='margin-top:0'>\
+				<button type='button' class='btn btn-default btn-sm pull-left' onclick='createFolder()'>新建文件夹</button>\
+				<button type='button' class='btn btn-danger btn-sm mr5 btn-close'>关闭</button>\
+				<button type='button' class='btn btn-success btn-sm btn-choose'>选择</button>\
+		</div>",
+		success:function(layero,layer_index){
+			$('.btn-close').click(function(){
+				layer.close(layer_index);
+			});
+
+			$('.btn-choose').click(function(){
+				var a = $("#PathPlace").find("span").text();
+				a = a.replace(new RegExp(/(\\)/g), "/");
+				a_len = a.length;
+				if (a[a_len-1] == '/'){
+					a = a.substr(0,a_len-1);
+				}
+				callback(a);
+				layer.close(layer_index);
+			});
+		}
+	});
+	getDiskList(default_dir);
+	activeDisk();
+}
+
 function changePath(d) {
 	setCookie('SetId', d);
 	setCookie('SetName', '');
@@ -214,11 +281,11 @@ function changePath(d) {
 				<thead><tr class='file-list-head'><th width='40%'>文件名</th><th width='20%'>修改时间</th><th width='10%'>权限</th><th width='10%'>所有者</th><th width='10%'></th></tr></thead>\
 				<tbody id='tbody' class='list-list'></tbody></table></div></div></div></div><div class='getfile-btn' style='margin-top:0'>\
 				<button type='button' class='btn btn-default btn-sm pull-left' onclick='createFolder()'>新建文件夹</button>\
-				<button type='button' class='btn btn-danger btn-sm mr5' onclick=\"layer.close(getCookie('ChangePath'))\">关闭</button>\
+				<button type='button' class='btn btn-danger btn-sm mr5' onclick=\"layer.close(getCookie('changePath'))\">关闭</button>\
 				<button type='button' class='btn btn-success btn-sm' onclick='getfilePath()'>选择</button>\
 		</div>"
 	});
-	setCookie("ChangePath", c);
+	setCookie("changePath", c);
 	var b = $("#" + d).val();
 	tmp = b.split(".");
 	if(tmp[tmp.length - 1] == "gz") {
@@ -399,7 +466,8 @@ function getfilePath() {
 	}
 
 	$("#" + getCookie("SetId")).val(a + getCookie("SetName"));
-	layer.close(getCookie("ChangePath"));
+	layer.close(getCookie("changePath"));
+	return a;
 }
 
 function setCookie(a, c) {
@@ -548,8 +616,8 @@ function onlineEditFile(k, f) {
 		var m = "";
 		var o = "";
 		for(var p = 0; p < u.length; p++) {
-			m = s.encoding == u[p] ? "selected" : "";
-			n += '<option value="' + u[p] + '" ' + m + ">" + u[p] + "</option>"
+			m = s.data.encoding == u[p] ? "selected" : "";
+			n += '<option value="' + u[p] + '" ' + m + ">" + u[p] + "</option>";
 		}
 		var r = layer.open({
 			type: 1,
@@ -557,7 +625,18 @@ function onlineEditFile(k, f) {
 			closeBtn: 1,
 			area: ["90%", "90%"],
 			title: lan.bt.edit_title+"[" + f + "]",
-			content: '<form class="bt-form pd20 pb70"><div class="line"><p style="color:red;margin-bottom:10px">'+lan.bt.edit_ps+'			<select class="bt-input-text" name="encoding" style="width: 74px;position: absolute;top: 31px;right: 19px;height: 22px;z-index: 9999;border-radius: 0;">' + n + '</select></p><textarea class="mCustomScrollbar bt-input-text" id="textBody" style="width:100%;margin:0 auto;line-height: 1.8;position: relative;top: 10px;" value="" />			</div>			<div class="bt-form-submit-btn" style="position:absolute; bottom:0; width:100%">			<button type="button" class="btn btn-danger btn-sm btn-editor-close">'+lan.public.close+'</button>			<button id="OnlineEditFileBtn" type="button" class="btn btn-success btn-sm">'+lan.public.save+'</button>			</div>			</form>'
+			content: '<form class="bt-form pd20 pb70">\
+				<div class="line">\
+					<p style="color:red;margin-bottom:10px">' + lan.bt.edit_ps + '\
+						<select class="bt-input-text" name="encoding" style="width: 74px;position: absolute;top: 31px;right: 19px;height: 22px;z-index: 9999;border-radius: 0;">' + n + '</select>\
+					</p>\
+					<textarea class="mCustomScrollbar bt-input-text" id="textBody" style="width:100%;margin:0 auto;line-height: 1.8;position: relative;top: 10px;" value="" />\
+				</div>\
+				<div class="bt-form-submit-btn" style="position:absolute; bottom:0; width:100%">\
+				<button type="button" class="btn btn-danger btn-sm btn-editor-close">'+lan.public.close+'</button>\
+				<button id="OnlineEditFileBtn" type="button" class="btn btn-success btn-sm">'+lan.public.save+'</button>\
+				</div>\
+			</form>'
 		});
 		$("#textBody").text(s.data.data);
 		var q = $(window).height() * 0.9;
@@ -605,19 +684,22 @@ function divcenter() {
 	$(".layui-layer").css("top", e + "px")
 }
 
-function btcopy(password) {
-	$("#bt_copys").attr('data-clipboard-text',password);
-	$("#bt_copys").click();
+function copyText(value) {
+	var clipboard = new ClipboardJS('#mw_copys');
+    clipboard.on('success', function (e) {
+        layer.msg('复制成功',{icon:1,time:2000});
+    });
+
+    clipboard.on('error', function (e) {
+        layer.msg('复制失败，浏览器不兼容!',{icon:2,time:2000});
+    });
+    $("#mw_copys").attr('data-clipboard-text',value);
+    $("#mw_copys").click();
 }
 
-var clipboard = new ClipboardJS('#bt_copys');
-clipboard.on('success', function (e) {
-    layer.msg('复制成功!',{icon:1});
-});
-
-clipboard.on('error', function (e) {
-    layer.msg('复制失败，浏览器不兼容!',{icon:2});
-});
+function copyPass(value){
+	copyText(value);
+}
 
 function isChineseChar(b) {
 	var a = /[\u4E00-\u9FA5\uF900-\uFA2D]/;
@@ -717,9 +799,9 @@ $(function() {
 	})
 });
 
-$("#dologin").click(function() {
+$("#signout").click(function() {
 	layer.confirm('您真的要退出面板吗?', {icon:3,closeBtn: 1}, function() {
-		window.location.href = "/login?dologin=True"
+		window.location.href = "/login?signout=True"
 	});
 	return false
 });
@@ -1443,11 +1525,16 @@ function webShell() {
         }
     });
 
+    $(window).unload(function(){
+  　     term.destroy();
+        clearInterval(interval);
+    });
+
     if (socket) {
-        socket.emit('connect_event', '');
+        socket.emit('webssh', '');
         interval = setInterval(function () {
-            socket.emit('connect_event', '');
-        }, 1000);
+            socket.emit('webssh', '');
+        }, 500);
     }
     
     term.on('data', function (data) {
@@ -1458,7 +1545,7 @@ function webShell() {
     var term_box = layer.open({
         type: 1,
         title: "本地终端",
-        area: ['685px','435px'],
+        area: ['685px','463px'],
         closeBtn: 1,
         shadeClose: false,
         content: '<div class="term-box"><div id="term"></div></div>\
@@ -1469,18 +1556,22 @@ function webShell() {
 					<button class="shellbutton btn btn-default btn-sm pull-right shell_btn_close">关闭</button>\
 					</div>\
                 </div>',
+        success:function(){
+        	$(".shell_btn_close").click(function(){
+				layer.close(term_box);
+				term.destroy();
+		        clearInterval(interval);
+			});
+        },
         cancel: function () {
             term.destroy();
             clearInterval(interval);
         }
     });
-	$(".shell_btn_close").click(function(){
-		layer.close(term_box);
-		term.destroy();
-        clearInterval(interval);
-	})
+	
 	
     setTimeout(function () {
+
         $('.terminal').detach().appendTo('#term');
         $("#term").show();
         socket.emit('webssh', "\n");
@@ -1567,16 +1658,14 @@ function webShell() {
             }
             socket.emit('webssh', ptext);
             term.focus();
-        })
+        });
         $("textarea[name='ssh_copy']").keydown(function (e) {
-
             if (e.ctrlKey && e.keyCode == 13) {
                 $(".shell_btn_1").click();
             } else if (e.altKey && e.keyCode == 13) {
                 $(".shell_btn_1").click();
             }
         });
-
     }, 100);
 }
 
@@ -1597,6 +1686,49 @@ function remove_ssh_menu() {
     $(".contextmenu").remove();
 }
 
+//显示进度
+function showSpeed(filename) {
+    $.post('/files/get_last_body', { num: 10,path: filename}, function (rdata) {
+    	if ($("#speed_log_lst").length < 1){
+    		return;
+    	}
+		if (rdata.status) {
+			$("#speed_log_lst").html(rdata.data);
+			$("#speed_log_lst").scrollTop($("#speed_log_lst")[0].scrollHeight);
+		}
+		setTimeout(function () { showSpeed(filename); }, 1000);
+    },'json');
+}
+/**
+ * 显示进度窗口
+ */
+function showSpeedWindow(msg, speed_log_func_name, callback){
+	var speed_msg = "<pre style='margin-bottom: 0px;height:250px;text-align: left;background-color: #000;color: #fff;white-space: pre-wrap;' id='speed_log_lst'>[MSG]</pre>";
+	var showSpeedKey = layer.open({
+		title: false,
+		type: 1,
+		closeBtn: 2,
+		shade: 0.3,
+		area: "700px",
+		offset: "30%",
+		content: speed_msg.replace('[MSG]', msg),
+		success: function (layers, index) {
+			var url = speed_log_func_name.replace('.','/');
+			$.post('/'+url, {}, function(rdata){
+				if (rdata.status){
+					setTimeout(function () {
+						showSpeed(rdata.data);
+					}, 1000);
+				} else {
+					layer.msg("缺少指定文件!");
+				}
+			},'json');
+			if (callback) {callback(layers,index,showSpeedKey);}
+		}
+    });
+}
+
+
 /*** 其中功能,针对插件通过库使用 start ***/
 
 //字符串转数组对象
@@ -1609,6 +1741,34 @@ function toArrayObject(str){
     }
     return data;
 }
+
+/**
+* 实体字符编码
+* @param {*} text 待编码的文本
+* @returns
+*/
+function entitiesEncode(text) {
+    text = text.replace(/&/g, "&amp;");
+    text = text.replace(/</g, "&lt;");
+    text = text.replace(/>/g, "&gt;");
+    text = text.replace(/ /g, "&nbsp;");
+    text = text.replace(/"/g, "&quot;");
+    return text;
+}
+/**
+* 实体字符解码
+* @param {*} text 待解码的文本
+* @returns
+*/
+function entitiesDecode(text) {
+    text = text.replace(/&amp;/g, "&");
+    text = text.replace(/&lt;/g, "<");
+    text = text.replace(/&gt;/g, ">");
+    text = text.replace(/&nbsp;/g, " ");
+    text = text.replace(/&quot;/g, "'");
+    return text;
+}
+
 
 function pluginService(_name, version){
 	var data = {name:_name, func:'status'}

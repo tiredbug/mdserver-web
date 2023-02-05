@@ -54,12 +54,7 @@ echo y | pacman -Syu icu
 
 hwclock --systohc
 
-#https need
-if [ ! -d /root/.acme.sh ];then	
-	curl https://get.acme.sh | sh
-fi
-
-if [ -f /etc/init.d/iptables ];then
+if [ -f /usr/sbin/iptables ];then
 
 	iptables -I INPUT -p tcp -m state --state NEW -m tcp --dport 22 -j ACCEPT
 	iptables -I INPUT -p tcp -m state --state NEW -m tcp --dport 80 -j ACCEPT
@@ -80,7 +75,7 @@ if [ -f /etc/init.d/iptables ];then
 fi
 
 
-if [ ! -f /etc/init.d/iptables ];then
+if [ ! -f /usr/sbin/iptables ];then
 	echo y | pacman -Sy firewalld
 	systemctl enable firewalld
 	systemctl start firewalld
@@ -103,22 +98,3 @@ fi
 
 cd /www/server/mdserver-web/scripts && bash lib.sh
 chmod 755 /www/server/mdserver-web/data
-
-
-cd /www/server/mdserver-web && ./cli.sh start
-isStart=`ps -ef|grep 'gunicorn -c setting.py app:app' |grep -v grep|awk '{print $2}'`
-n=0
-while [[ ! -f /etc/init.d/mw ]];
-do
-    echo -e ".\c"
-    sleep 1
-    let n+=1
-    if [ $n -gt 20 ];then
-    	echo -e "start mw fail"
-        exit 1
-    fi
-done
-
-cd /www/server/mdserver-web && /etc/init.d/mw stop
-cd /www/server/mdserver-web && /etc/init.d/mw start
-cd /www/server/mdserver-web && /etc/init.d/mw default

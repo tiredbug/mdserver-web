@@ -1,22 +1,89 @@
+/** op **/
+// $(".set-submit").click(function(){
+// 	var data = $("#set_config").serialize();
+// 	layer.msg('正在保存配置...',{icon:16,time:0,shade: [0.3, '#000']});
+// 	$.post('/config/set',data,function(rdata){
+// 		layer.closeAll();
+// 		layer.msg(rdata.msg,{icon:rdata.status?1:2});
+// 		if(rdata.status){
+// 			setTimeout(function(){
+// 				window.location.href = ((window.location.protocol.indexOf('https') != -1)?'https://':'http://') + rdata.data.host + window.location.pathname;
+// 			},2500);
+// 		}
+// 	},'json');
+// });
 
-// $.post('/config/get','',function(rdata){
-// 	console.log(rdata);
-// },'json');
+$('input[name="webname"]').change(function(){
+	var webname = $(this).val();
+	$('.btn_webname').removeAttr('disabled');
+	$('.btn_webname').unbind().click(function(){
+		$.post('/config/set_webname','webname='+webname, function(rdata){
+			showMsg(rdata.msg,function(){window.location.reload();},{icon:rdata.status?1:2},2000);
+		},'json');
+	});
+});
 
 
-$(".set-submit").click(function(){
-	var data = $("#set_config").serialize();
-	layer.msg('正在保存配置...',{icon:16,time:0,shade: [0.3, '#000']});
-	$.post('/config/set',data,function(rdata){
-		layer.closeAll();
-		layer.msg(rdata.msg,{icon:rdata.status?1:2});
-		if(rdata.status){
-			setTimeout(function(){
-				window.location.href = ((window.location.protocol.indexOf('https') != -1)?'https://':'http://') + rdata.data.host + window.location.pathname;
-			},2500);
-		}
+$('input[name="host_ip"]').change(function(){
+	var host_ip = $(this).val();
+	$('.btn_host_ip').removeAttr('disabled');
+	$('.btn_host_ip').unbind().click(function(){
+		$.post('/config/set_ip','host_ip='+host_ip, function(rdata){
+			showMsg(rdata.msg,function(){window.location.reload();},{icon:rdata.status?1:2},2000);
+		},'json');
+	});
+});
+
+$('input[name="port"]').change(function(){
+	var port = $(this).val();
+	$('.btn_port').removeAttr('disabled');
+	$('.btn_port').unbind().click(function(){
+		$.post('/config/set_port','port='+port, function(rdata){
+			showMsg(rdata.msg,function(){window.location.reload();},{icon:rdata.status?1:2},2000);
+		},'json');
+	});
+});
+
+$('input[name="sites_path"]').change(function(){
+	var sites_path = $(this).val();
+	$('.btn_sites_path').removeAttr('disabled');
+	$('.btn_sites_path').unbind().click(function(){
+		$.post('/config/set_www_dir','sites_path='+sites_path, function(rdata){
+			showMsg(rdata.msg,function(){window.location.reload();},{icon:rdata.status?1:2},2000);
+		},'json');
+	});
+});
+
+
+$('input[name="backup_path"]').change(function(){
+	var backup_path = $(this).val();
+	$('.btn_backup_path').removeAttr('disabled');
+	$('.btn_backup_path').unbind().click(function(){
+		$.post('/config/set_backup_dir','backup_path='+backup_path, function(rdata){
+			showMsg(rdata.msg,function(){window.location.reload();},{icon:rdata.status?1:2},2000);
+		},'json');
+	});
+});
+
+
+$('input[name="bind_domain"]').change(function(){
+	var domain = $(this).val();
+	$('.btn_bind_domain').removeAttr('disabled');
+	$('.btn_bind_domain').unbind().click(function(){
+		$.post('/config/set_panel_domain','domain='+domain, function(rdata){
+			showMsg(rdata.msg,function(){window.location.reload();},{icon:rdata.status?1:2},2000);
+		},'json');
+	});
+});
+
+$('input[name="bind_ssl"]').click(function(){
+	var open_ssl = $(this).prop("checked");
+	$.post('/config/set_panel_ssl',{}, function(rdata){
+		showMsg(rdata.msg,function(){window.location.reload();},{icon:rdata.status?1:2},2000);
 	},'json');
 });
+
+/** op **/
 
 
 //关闭面板
@@ -49,38 +116,50 @@ function debugMode(){
 
 function modifyAuthPath() {
     var auth_path = $("#admin_path").val();
-    btn = "<button type='button' class='btn btn-success btn-sm' onclick=\"bindBTName(1,'b')\">确定</button>";
     layer.open({
         type: 1,
         area: "500px",
         title: "修改安全入口",
         closeBtn: 1,
         shift: 5,
+        btn:['提交','关闭'],
         shadeClose: false,
-        content: '<div class="bt-form bt-form pd20 pb70">\
+        content: '<div class="bt-form bt-form pd20">\
                     <div class="line ">\
                         <span class="tname">入口地址</span>\
                         <div class="info-r">\
-                            <input name="auth_path_set" class="bt-input-text mr5" type="text" style="width: 311px" value="'+ auth_path+'">\
-                        </div></div>\
-                        <div class="bt-form-submit-btn">\
-                            <button type="button" class= "btn btn-sm btn-danger" onclick="layer.closeAll()"> 关闭</button>\
-                            <button type="button" class="btn btn-sm btn-success" onclick="setAuthPath();">提交</button>\
-                    </div></div>'
-    });
-}
-
-function setAuthPath() {
-    var auth_path = $("input[name='auth_path_set']").val();
-    var loadT = layer.msg(lan.config.config_save, { icon: 16, time: 0, shade: [0.3, '#000'] });
-    $.post('/config/set_admin_path', { admin_path: auth_path }, function (rdata) {
-        layer.close(loadT);
-        if (rdata.status) {
-            layer.closeAll();
-            $("#admin_path").val(auth_path);
+                            <input name="auth_path_set" class="bt-input-text mr5" type="text" style="width: 311px" value="' + auth_path + '">\
+                        </div>\
+                    </div>\
+                </div>',
+        yes:function(index){
+        	var auth_path = $("input[name='auth_path_set']").val();
+		    if (auth_path == '/' || auth_path == ''){
+		    	layer.confirm('警告，关闭安全入口等于直接暴露你的后台地址在外网，十分危险, 您真的要这样更改吗？',{title:'安全入口修改',closeBtn:1,icon:13,
+		    	cancel:function(){
+				}}, function() {
+					var loadT = layer.msg(lan.config.config_save, { icon: 16, time: 0, shade: [0.3, '#000'] });
+				    $.post('/config/set_admin_path', { admin_path: auth_path }, function (rdata) {
+				    	showMsg(rdata.msg, function(){
+				    		layer.close(index);
+				    		layer.close(loadT);
+				    		$("#admin_path").val(auth_path);
+				    	},{ icon: rdata.status ? 1 : 2 }, 2000);
+					},'json');
+				});
+		    	return;
+		    } else {
+		    	var loadT = layer.msg(lan.config.config_save, { icon: 16, time: 0, shade: [0.3, '#000'] });
+			    $.post('/config/set_admin_path', { admin_path: auth_path }, function (rdata) {
+			    	showMsg(rdata.msg, function(){
+			    		layer.close(index);
+			    		layer.close(loadT);
+			    		$("#admin_path").val(auth_path);
+			    	},{ icon: rdata.status ? 1 : 2 }, 2000);
+			    },'json');
+		    }
         }
-        setTimeout(function () { layer.msg(rdata.msg, { icon: rdata.status ? 1 : 2 }); }, 200);
-    },'json');
+    });
 }
 
 function setPassword(a) {
@@ -236,7 +315,6 @@ function setPanelSSL(){
 	<li>开启后导致面板不能访问，可以点击下面链接了解解决方法</li>\
 	<p style="margin-top: 10px;">\
 		<input type="checkbox" id="checkSSL" /><label style="font-weight: 400;margin: 3px 5px 0px;" for="checkSSL">我已了经解详情,并愿意承担风险</label>\
-		<a target="_blank" class="btlink" href="https://www.bt.cn/bbs/thread-4689-1-1.html" style="float: right;">了解详情</a>\
 	</p>';
 	layer.confirm(msg,{title:'设置面板SSL',closeBtn:1,icon:3,area:'550px',cancel:function(){
 		if(status == 0){
@@ -281,16 +359,33 @@ function getPanelSSL(){
 	var loadT = layer.msg('正在获取证书信息...',{icon:16,time:0,shade: [0.3, '#000']});
 	$.post('/config/get_panel_ssl',{},function(cert){
 		layer.close(loadT);
+
+
+		var cert_data = '';
+		if (cert['info']){
+			cert_data = "<div class='ssl_state_info'><div class='state_info_flex'>\
+				<div class='state_item'><span>证书品牌：</span><span class='ellipsis_text ssl_issue'>"+cert['info']['issuer']+"</span></div>\
+				<div class='state_item'><span>到期时间：</span><span class='btlink ssl_endtime'>剩余"+cert['info']['endtime']+"天到期</span></div>\
+			</div>\
+			<div class='state_info_flex'>\
+				<div class='state_item'><span>认证域名：</span><span class='ellipsis_text ssl_subject'>"+cert['info']['subject']+"</span></div>\
+			</div></div>";
+		}
+
 		var certBody = '<div class="tab-con">\
 			<div class="myKeyCon ptb15">\
-				<div class="ssl-con-key pull-left mr20">密钥(KEY)<br>\
-					<textarea id="key" class="bt-input-text">'+cert.privateKey+'</textarea>\
-				</div>\
-				<div class="ssl-con-key pull-left">证书(PEM格式)<br>\
-					<textarea id="csr" class="bt-input-text">'+cert.certPem+'</textarea>\
+				'+cert_data+'\
+				<div class="custom_certificate_info">\
+					<div class="ssl-con-key pull-left mr20">密钥(KEY)<br>\
+						<textarea id="key" class="bt-input-text">'+cert.privateKey+'</textarea>\
+					</div>\
+					<div class="ssl-con-key pull-left">证书(PEM格式)<br>\
+						<textarea id="csr" class="bt-input-text">'+cert.certPem+'</textarea>\
+					</div>\
 				</div>\
 				<div class="ssl-btn pull-left mtb15" style="width:100%">\
-					<button class="btn btn-success btn-sm" onclick="savePanelSSL()">保存</button>\
+					<button class="btn btn-success btn-sm save-panel-ssl">保存</button>\
+					<button class="btn btn-success btn-sm apply-lets-ssl">申请Lets证书</button>\
 				</div>\
 			</div>\
 			<ul class="help-info-text c7 pull-left">\
@@ -305,24 +400,392 @@ function getPanelSSL(){
 			closeBtn: 1,
 			shift: 5,
 			shadeClose: false,
-			content:certBody
+			content:certBody,
+			success:function(layero, layer_id){
+
+				//保存SSL
+				$('.save-panel-ssl').click(function(){
+					var data = {
+						privateKey:$("#key").val(),
+						certPem:$("#csr").val()
+					}
+					var loadT = layer.msg('正在安装并设置SSL组件,这需要几分钟时间...',{icon:16,time:0,shade: [0.3, '#000']});
+					$.post('/config/save_panel_ssl',data,function(rdata){
+						layer.close(loadT);
+						if(rdata.status){
+							layer.closeAll();
+						}
+						layer.msg(rdata.msg,{icon:rdata.status?1:2});
+					},'json');
+				});
+
+				//申请Lets证书
+				$('.apply-lets-ssl').click(function(){
+					showSpeedWindow('正在申请...', 'site.get_let_logs', function(layers,index){
+						$.post('/config/apply_panel_let_ssl',{},function(rdata){
+							layer.close(loadT);
+							if(rdata.status){
+								layer.close(index);
+								var tdata = rdata['data'];
+								$('.ssl_issue').text(tdata['info']['issuer']);
+								$('.ssl_endtime').text("剩余"+tdata['info']['endtime']+"天到期");
+								$('.ssl_subject').text(tdata['info']['subject']);
+
+								$('textarea[name="key"]').val(tdata['info']['privateKey']);
+								$('textarea[name="csr"]').val(tdata['info']['certPem']);
+							}
+							layer.msg(rdata.msg,{icon:rdata.status?1:2});
+						},'json');
+					});
+				});
+			}
 		});
 	},'json');
 }
 
 
-function savePanelSSL(){
-	var data = {
-		privateKey:$("#key").val(),
-		certPem:$("#csr").val()
-	}
-	var loadT = layer.msg('正在安装并设置SSL组件,这需要几分钟时间...',{icon:16,time:0,shade: [0.3, '#000']});
-	$.post('/config/save_panel_ssl',data,function(rdata){
-		layer.close(loadT);
-		if(rdata.status){
-			layer.closeAll();
-		}
-		layer.msg(rdata.msg,{icon:rdata.status?1:2});
+function removeTempAccess(id){
+	$.post('/config/remove_temp_login', {id:id}, function(rdata){
+		showMsg(rdata.msg, function(){
+			setTempAccessReq();
+		},{ icon: rdata.status ? 1 : 2 }, 2000);
 	},'json');
 }
 
+function getTempAccessLogsReq(id){
+	$.post('/config/get_temp_login_logs', {id:id}, function(rdata){			
+		var tbody = '';
+		for (var i = 0; i < rdata.data.length; i++) {
+
+			tbody += '<tr>';
+			tbody += '<td>' + (rdata.data[i]['type']) +'</td>';
+			tbody += '<td>' + rdata.data[i]['addtime'] +'</td>';
+			tbody += '<td>'+ rdata.data[i]['log'] +'</td>';
+			tbody += '</tr>';
+		}
+		$('#logs_list').html(tbody);
+
+	},'json');
+}
+
+function getTempAccessLogs(id){
+
+	layer.open({
+		area: ['700px', '250px'],
+		title: '临时授权管理',
+		closeBtn:1,
+		shift: 0,
+		type: 1,
+		content: "<div class=\"pd20\">\
+					<button class=\"btn btn-success btn-sm refresh_log\">刷新日志</button>\
+					<div class=\"divtable mt10\">\
+						<table class=\"table table-hover\">\
+							<thead>\
+								<tr><th>操作类型</th><th>操作时间</th><th>日志</th></tr>\
+							</thead>\
+							<tbody id=\"logs_list\"></tbody>\
+						</table>\
+					</div>\
+				</div>",
+		success:function(){
+			getTempAccessLogsReq(id);
+			$('.refresh_log').click(function(){
+				getTempAccessLogsReq(id);
+			});
+		}
+	});
+}
+
+function setTempAccessReq(page){
+	if (typeof(page) == 'undefined'){
+		page = 1;
+	}
+
+	$.post('/config/get_temp_login', {page:page}, function(rdata){
+		if ( typeof(rdata.status) !='undefined' && !rdata.status){
+			showMsg(rdata.msg,function(){
+				layer.closeAll();
+			},{icon:2}, 2000);
+			return;
+		}
+
+		var tbody = '';
+		for (var i = 0; i < rdata.data.length; i++) {
+
+			tbody += '<tr>';
+			tbody += '<td>' + (rdata.data[i]['login_addr']||'未登陆') +'</td>';
+
+			tbody += '<td>';
+			switch (parseInt(rdata.data[i]['state'])) {
+				case 0:
+					tbody += '<a style="color:green;">待使用</a>';
+					break;
+				case 1:
+					tbody += '<a style="color:brown;">已使用</a>';
+					break;
+				case -1:
+					tbody += '<a>已过期</a>';
+					break;
+			}
+			tbody += '</td>';
+
+			tbody += '<td>' + (getLocalTime(rdata.data[i]['login_time'])||'未登陆') +'</td>';
+			tbody += '<td>' + getLocalTime(rdata.data[i]['expire']) +'</td>';
+
+			tbody += '<td>';
+
+			if (rdata.data[i]['state'] == '1' ){
+				tbody += '<a class="btlink" onclick="getTempAccessLogs(\''+rdata.data[i]['id']+'\')">操作日志</a>';
+			} else{
+				tbody += '<a class="btlink" onclick="removeTempAccess(\''+rdata.data[i]['id']+'\')">删除</a>';
+			}
+			
+			tbody += '</td>';
+
+			tbody += '</tr>';
+		}
+
+		$('#temp_login_view_tbody').html(tbody);
+		$('.temp_login_view_page').html(rdata.page);
+	},'json');
+}
+
+function setTempAccess(){
+	layer.open({
+		area: ['700px', '250px'],
+		title: '临时授权管理',
+		closeBtn:1,
+		shift: 0,
+		type: 1,
+		content: "<div class=\"login_view_table pd20\">\
+					<button class=\"btn btn-success btn-sm create_temp_login\" >临时访问授权</button>\
+					<div class=\"divtable mt10\">\
+						<table class=\"table table-hover\">\
+							<thead>\
+								<tr><th>登录IP</th><th>状态</th><th>登录时间</th><th>过期时间</th><th style=\"text-align:right;\">操作</th></tr>\
+							</thead>\
+							<tbody id=\"temp_login_view_tbody\"></tbody>\
+						</table>\
+						<div class=\"temp_login_view_page page\"></div>\
+					</div>\
+				</div>",
+		success:function(){
+			setTempAccessReq();
+
+			$('.create_temp_login').click(function(){
+				layer.confirm('<span style="color:red">注意1：滥用临时授权可能导致安全风险。</br>注意2：请勿在公共场合发布临时授权连接</span></br>即将创建临时授权连接，继续吗？',
+				{
+					title:'风险提示',
+					closeBtn:1,
+					icon:13,
+				}, function(create_temp_login_layer) {
+					$.post('/config/set_temp_login', {}, function(rdata){
+						layer.close(create_temp_login_layer);
+						setTempAccessReq();
+						layer.open({
+							area: '570px',
+							title: '创建临时授权',
+							shift: 0,
+							type: 1,
+							content: "<div class=\"bt-form create_temp_view pd15\">\
+									<div class=\"line\">\
+										<span class=\"tname\">临时授权地址</span>\
+										<div>\
+											<textarea id=\"temp_link\" class=\"bt-input-text mr20\" style=\"margin: 0px;width: 500px;height: 50px;line-height: 19px;\"></textarea>\
+										</div>\
+									</div>\
+									<div class=\"line\"><button type=\"submit\" class=\"btn btn-success btn-sm btn-copy-temp-link\" data-clipboard-text=\"\">复制地址</button></div>\
+									<ul class=\"help-info-text c7 ptb15\">\
+										<li>临时授权生成后1小时内使用有效，为一次性授权，使用后立即失效</li>\
+										<li>使用临时授权登录面板后1小时内拥有面板所有权限，请勿在公共场合发布临时授权连接</li>\
+										<li>授权连接信息仅在此处显示一次，若在使用前忘记，请重新生成</li>\
+									</ul>\
+								</div>",
+							success:function(){
+								var temp_link = "".concat(location.origin, "/login?tmp_token=").concat(rdata.token);
+								$('#temp_link').val(temp_link);
+
+								copyText(temp_link);
+								$('.btn-copy-temp-link').click(function(){
+									copyText(temp_link);
+								});
+							}
+						});
+					},'json');
+				});
+			});
+		}
+	});
+}
+
+function setBasicAuthTip(callback){
+	var tip = layer.open({
+		area: ['500px', '385px'],
+		title: '开启BasicAuth认证提示',
+		closeBtn:0,
+		shift: 0,
+		type: 1,
+		content: '<div class="bt-form pd20">\
+		<div class="mb15">\
+			<h3 class="layer-info-title">风险操作！此功能不懂请勿开启！</h3>\
+		</div>\
+		<ul class="help-info-text c7 explain-describe-list pd15">\
+			<li style="color: red;">必须要用到且了解此功能才决定自己是否要开启!</li>\
+			<li>开启后，以任何方式访问面板，将先要求输入BasicAuth用户名和密码</li>\
+			<li>开启后，能有效防止面板被扫描发现，但并不能代替面板本身的帐号密码</li>\
+			<li>请牢记BasicAuth密码，一但忘记将无法访问面板</li>\
+			<li>如忘记密码，可在SSH通过mw命令来关闭BasicAuth验证</li>\
+		</ul>\
+		<div class="mt10 plr15 agreement-box" id="checkBasicAuth">\
+			<input class="bt-input-text mr5" name="agreement" type="checkbox" value="false" id="agreement_more">\
+			<label for="agreement_more"><span>我已经了解详情,并愿意承担风险</span></label>\
+		</div>\
+	</div>',
+		btn:["确定","取消"],
+		yes:function(l,index){
+			is_agree = $('#agreement_more').prop("checked");
+			if (is_agree){
+				layer.close(tip);
+				callback();
+			}
+			return is_agree;
+		},
+		btn2: function(index, layero){
+		    $('#cfg_basic_auth').prop("checked", false);
+		}
+	});
+}
+
+function setBasicAuth(){
+
+	var basic_auth = $('#cfg_basic_auth').prop("checked");
+	if (!basic_auth){
+		setBasicAuthTip(function(){
+			var tip = layer.open({
+				area: ['500px', '385px'],
+				title: '配置BasicAuth认证',
+				closeBtn:1,
+				shift: 0,
+				type: 1,
+				content: '<div class="bt-form pd20">\
+			<div class="line">\
+				<span class="tname">用户名</span>\
+				<div class="info-r"><input class="bt-input-text mr5" name="basic_user" type="text" placeholder="请设置用户名" style="width: 280px;"></div>\
+			</div>\
+			<div class="line">\
+				<span class="tname">密码</span>\
+				<div class="info-r"><input class="bt-input-text mr5" name="basic_pwd" type="text" placeholder="请设置密码" style="width: 280px;"></div>\
+			</div>\
+			<div class="line">\
+				<span class="tname"></span>\
+				<div class="info-r"><button class="btn btn-success btn-sm save_auth_cfg">保存配置</button></div>\
+			</div>\
+			<ul class="help-info-text c7">\
+				<li style="color: red;">注意：请不要在这里使用您的常用密码，这可能导致密码泄漏！</li>\
+				<li>开启后，以任何方式访问面板，将先要求输入BasicAuth用户名和密码</li>\
+				<li>开启后，能有效防止面板被扫描发现，但并不能代替面板本身的帐号密码</li>\
+				<li>请牢记BasicAuth密码，一但忘记将无法访问面板</li><li>如忘记密码，可在SSH通过mw命令来关闭BasicAuth验证</li>\
+			</ul>\
+		</div>',
+				success:function(){
+					$('.save_auth_cfg').click(function(){
+						var basic_user = $('input[name="basic_user"]').val();
+						var basic_pwd = $('input[name="basic_pwd"]').val();
+						$.post('/config/set_basic_auth', {'basic_user':basic_user,'basic_pwd':basic_pwd},function(rdata){
+							showMsg(rdata.msg, function(){
+								window.location.reload();
+							} ,{icon:rdata.status?1:2}, 2000);
+						},'json');
+					});
+				},
+				cancel:function(){
+					$('#cfg_basic_auth').prop("checked", false);
+				},
+			});
+		});
+	} else {
+	    layer.confirm('关闭BasicAuth认证后，面板登录将不再验证BasicAuth基础认证，这将会导致面板安全性下降，继续操作！', 
+	    {btn: ['确定', '取消'], title: "是否关闭BasicAuth认证?", icon:13}, function (index) {
+	    	var basic_user = '';
+			var basic_pwd = '';
+			$.post('/config/set_basic_auth', {'is_open':'false'},function(rdata){
+				showMsg(rdata.msg, function(){
+					layer.close(index);
+					window.location.reload();
+				} ,{icon:rdata.status?1:2}, 2000);
+			},'json');
+	    },function(){
+	    	$('#cfg_basic_auth').prop("checked", true);
+	    });
+	}
+}
+
+function showPanelApi(){
+	$.post('/config/get_panel_token', '', function(rdata){
+		var tip = layer.open({
+			area: ['500px', '355px'],
+			title: '配置面板API',
+			closeBtn:1,
+			shift: 0,
+			type: 1,
+			content: '<div class="bt-form pd20">\
+		<div class="line">\
+			<span class="tname">接口密钥</span>\
+			<div class="info-r">\
+				<input class="bt-input-text mr5" name="token" type="text" style="width: 310px;" disabled>\
+				<button class="btn btn-success btn-xs reset_token" style="margin-left: -50px;">重置</button>\
+			</div>\
+		</div>\
+		<div class="line">\
+			<span class="tname" style="width: 90px; overflow: initial; height: 20px; line-height: 20px;">IP白名单<br/>(每行1个)</span>\
+			<div class="info-r"><textarea class="bt-input-text" name="api_limit_addr" style="width: 310px; height: 80px; line-height: 20px; padding: 5px 8px;"></textarea></div>\
+		</div>\
+		<div class="line">\
+			<span class="tname"></span>\
+			<div class="info-r"><button class="btn btn-success btn-sm save_api">保存配置</button></div>\
+		</div>\
+		<ul class="help-info-text c7">\
+			<li>开启API后，必需在IP白名单列表中的IP才能访问面板API接口</li>\
+			<li style="color: red;">请不要在生产环境开启，这可能增加服务器安全风险；</li>\
+		</ul>\
+	</div>',
+			success:function(layero,index){
+
+				$('input[name="token"]').val(rdata.data.token);
+				$('textarea[name="api_limit_addr"]').val(rdata.data.limit_addr);
+
+
+				$('.reset_token').click(function(){
+					layer.confirm('您确定要重置当前密钥吗？<br/><span style="color: red; ">重置密钥后，已关联密钥产品，将失效，请重新添加新密钥至产品。</span>',{title:'重置密钥',closeBtn:2,icon:13,cancel:function(){
+					}}, function() {
+						$.post('/config/set_panel_token', {'op_type':"1"},function(rdata){
+							showMsg("接口密钥已生成，重置密钥后，已关联密钥产品，将失效，请重新添加新密钥至产品。", function(){
+								$('input[name="token"]').val(rdata.data);
+							} ,{icon:1}, 2000);
+						},'json');
+					});
+				});
+
+				$('.save_api').click(function(){
+					var limit_addr = $('textarea[name="api_limit_addr"]').val();
+					$.post('/config/set_panel_token', {'op_type':"3",'limit_addr':limit_addr},function(rdata){
+						showMsg(rdata.msg, function(){
+						} ,{icon:rdata.status?1:2}, 2000);
+					},'json');
+				});
+			},
+		});
+	},'json');	
+}
+
+
+function setPanelApi(){
+	var cfg_panel_api = $('#cfg_panel_api').prop("checked");
+	$.post('/config/set_panel_token', {'op_type':"2"},function(rdata){
+		showMsg(rdata.msg, function(){
+			if (rdata.status){
+				showPanelApi();
+			}
+		} ,{icon:rdata.status?1:2}, 1000);
+	},'json');
+}

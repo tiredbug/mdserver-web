@@ -1,5 +1,18 @@
 # coding: utf-8
 
+# ---------------------------------------------------------------------------------
+# MW-Linux面板
+# ---------------------------------------------------------------------------------
+# copyright (c) 2018-∞(https://github.com/midoks/mdserver-web) All rights reserved.
+# ---------------------------------------------------------------------------------
+# Author: midoks <midoks@163.com>
+# ---------------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------------
+# 文件类操作
+# ---------------------------------------------------------------------------------
+
+
 import psutil
 import time
 import os
@@ -39,7 +52,7 @@ class files_api:
             data = mw.getLastLine(path, int(line))
             return mw.returnJson(True, 'OK', data)
         except Exception as ex:
-            return mw.returnJson(False, u'无法正确读取文件!' + str(ex))
+            return mw.returnJson(False, '无法正确读取文件!' + str(ex))
 
     def saveBodyApi(self):
         path = request.form.get('path', '')
@@ -84,11 +97,11 @@ class files_api:
         import shutil
         try:
             shutil.move(sfile, dfile)
-            msg = mw.getInfo('移动文件或目录[{1}]到[{2}]成功!', (sfile, dfile,))
+            msg = mw.getInfo('移动或重名命文件[{1}]到[{2}]成功!', (sfile, dfile,))
             mw.writeLog('文件管理', msg)
-            return mw.returnJson(True, '移动文件或目录成功!')
+            return mw.returnJson(True, '移动或重名命文件成功!')
         except:
-            return mw.returnJson(False, '移动文件或目录失败!')
+            return mw.returnJson(False, '移动或重名命文件失败!')
 
     def deleteApi(self):
         path = request.form.get('path', '')
@@ -135,12 +148,16 @@ class files_api:
         if not os.path.exists(path):
             path = mw.getRootDir() + "/wwwroot"
         search = request.args.get('search', '').strip().lower()
+        search_all = request.args.get('all', '').strip().lower()
         page = request.args.get('p', '1').strip().lower()
         row = request.args.get('showRow', '10')
         disk = request.form.get('disk', '')
         if disk == 'True':
             row = 1000
 
+        # return self.getAllDir(path, int(page), int(row), "wp-inlcude")
+        if search_all == 'yes' and search != '':
+            return self.getAllDir(path, int(page), int(row), search)
         return self.getDir(path, int(page), int(row), search)
 
     def createFileApi(self):
@@ -223,6 +240,11 @@ class files_api:
                 system_api.system_api().restartTask()
         except:
             system_api.system_api().restartTask()
+
+        # 删除日志
+        task_log = mw.getRunDir() + "/tmp/panelTask.pl"
+        if os.path.exists(task_log):
+            os.remove(task_log)
         return mw.returnJson(True, '任务已删除!')
 
     # 上传文件
@@ -324,7 +346,7 @@ class files_api:
         if not self.checkDir(path):
             return mw.returnJson(False, '敏感目录,请不要花样作死!')
 
-        os.system('which chattr && chattr -R -i ' + rPath + path)
+        mw.execShell('which chattr && chattr -R -i ' + rPath + path)
         if os.path.isdir(rPath + path):
             import shutil
             shutil.rmtree(rPath + path)
@@ -343,7 +365,7 @@ class files_api:
 
     def closeRecycleBinApi(self):
         rPath = self.rPath
-        os.system('which chattr && chattr -R -i ' + rPath)
+        mw.execShell('which chattr && chattr -R -i ' + rPath)
         rlist = os.listdir(rPath)
         i = 0
         l = len(rlist)
@@ -626,6 +648,7 @@ class files_api:
             user = mw.execShell(
                 "who | sed -n '2, 1p' |awk '{print $1}'")[0].strip()
             auth = user + ':staff'
+
         os.system('chown -R ' + auth + ' ' + filename)
         os.system('chmod -R 755 ' + filename)
 
@@ -652,7 +675,7 @@ class files_api:
             return mw.returnJson(False, '文件不存在', (path,))
 
         if os.path.getsize(path) > 2097152:
-            return mw.returnJson(False, u'不能在线编辑大于2MB的文件!')
+            return mw.returnJson(False, '不能在线编辑大于2MB的文件!')
 
         fp = open(path, 'rb')
         data = {}
@@ -676,8 +699,10 @@ class files_api:
                     data['encoding'] = 'utf-8'
                 if char['encoding'] == 'Big5':
                     data['encoding'] = 'BIG5'
-                if not char['encoding'] in ['GBK', 'utf-8', 'BIG5']:
+
+                if not data['encoding'] in ['GBK', 'utf-8', 'BIG5']:
                     data['encoding'] = 'utf-8'
+
                 try:
                     if sys.version_info[0] == 2:
                         data['data'] = srcBody.decode(
@@ -691,16 +716,17 @@ class files_api:
                             data['encoding']).encode('utf-8', errors='ignore')
                     else:
                         data['data'] = srcBody.decode(data['encoding'])
+                return mw.returnJson(True, 'OK', data)
             else:
                 if sys.version_info[0] == 2:
                     data['data'] = srcBody.decode('utf-8').encode('utf-8')
                 else:
                     data['data'] = srcBody.decode('utf-8')
-                data['encoding'] = u'utf-8'
+                data['encoding'] = 'utf-8'
 
             return mw.returnJson(True, 'OK', data)
         except Exception as ex:
-            return mw.returnJson(False, u'文件编码不被兼容，无法正确读取文件!' + str(ex))
+            return mw.returnJson(False, '文件编码不被兼容，无法正确读取文件!' + str(ex))
 
     def saveBody(self, path, data, encoding='utf-8'):
         if not os.path.exists(path):
@@ -724,7 +750,7 @@ class files_api:
             mw.writeLog('文件管理', '文件保存成功', (path,))
             return mw.returnJson(True, '文件保存成功')
         except Exception as ex:
-            return mw.returnJson(False, 'FILE_SAVE_ERR:' + str(ex))
+            return mw.returnJson(False, '文件保存错误:' + str(ex))
 
     def zip(self, sfile, dfile, stype, path):
         if sfile.find(',') == -1:
@@ -734,16 +760,16 @@ class files_api:
         try:
             tmps = mw.getRunDir() + '/tmp/panelExec.log'
             if stype == 'zip':
-                os.system("cd '" + path + "' && zip '" + dfile +
-                          "' -r '" + sfile + "' > " + tmps + " 2>&1")
+                mw.execShell("cd '" + path + "' && zip '" + dfile +
+                             "' -r '" + sfile + "' > " + tmps + " 2>&1")
             else:
                 sfiles = ''
                 for sfile in sfile.split(','):
                     if not sfile:
                         continue
                     sfiles += " '" + sfile + "'"
-                os.system("cd '" + path + "' && tar -zcvf '" +
-                          dfile + "' " + sfiles + " > " + tmps + " 2>&1")
+                mw.execShell("cd '" + path + "' && tar -zcvf '" +
+                             dfile + "' " + sfiles + " > " + tmps + " 2>&1")
             self.setFileAccept(dfile)
             mw.writeLog("文件管理", '文件压缩成功!', (sfile, dfile))
             return mw.returnJson(True, '文件压缩成功!')
@@ -758,16 +784,17 @@ class files_api:
         try:
             tmps = mw.getRunDir() + '/tmp/panelExec.log'
             if stype == 'zip':
-                os.system("cd " + path + " && unzip -d '" + dfile +
-                          "' '" + sfile + "' > " + tmps + " 2>&1 &")
+                mw.execShell("cd " + path + " && unzip -o -d '" + dfile +
+                             "' '" + sfile + "' > " + tmps + " 2>&1 &")
             else:
                 sfiles = ''
                 for sfile in sfile.split(','):
                     if not sfile:
                         continue
                     sfiles += " '" + sfile + "'"
-                os.system("cd " + path + " && tar -zxvf " + sfiles +
-                          " -C " + dfile + " > " + tmps + " 2>&1 &")
+                mw.execShell("cd " + path + " && tar -zxvf " + sfiles +
+                             " -C " + dfile + " > " + tmps + " 2>&1 &")
+
             self.setFileAccept(dfile)
             mw.writeLog("文件管理", '文件解压成功!', (sfile, dfile))
             return mw.returnJson(True, '文件解压成功!')
@@ -781,7 +808,7 @@ class files_api:
 
         # 检查是否为.user.ini
         if path.find('.user.ini') >= 0:
-            os.system("which chattr && chattr -i '" + path + "'")
+            mw.execShell("which chattr && chattr -i '" + path + "'")
 
         try:
             if os.path.exists('data/recycle_bin.pl'):
@@ -812,10 +839,58 @@ class files_api:
             if search:
                 if name.lower().find(search) == -1:
                     continue
-            # if name[0:1] == '.':
-            #     continue
+            if name == '.':
+                continue
             i += 1
         return i
+
+    def getAllDir(self, path, page=1, page_size=10, search=None):
+        # print("search:", search)
+        data = {}
+        dirnames = []
+        filenames = []
+
+        count = 0
+        max_limit = 3000
+
+        for d_list in os.walk(path):
+            if count >= max_limit:
+                break
+
+            for d in d_list[1]:
+                if count >= max_limit:
+                    break
+                if d.lower().find(search) != -1:
+                    filename = d_list[0] + '/' + d
+                    if not os.path.exists(filename):
+                        continue
+                    dirnames.append(self.__get_stats(filename, path))
+                    count += 1
+
+            for f in d_list[2]:
+                if count >= max_limit:
+                    break
+
+                if f.lower().find(search) != -1:
+                    filename = d_list[0] + '/' + f
+                    if not os.path.exists(filename):
+                        continue
+                    filenames.append(self.__get_stats(filename, path))
+                    count += 1
+
+        data['DIR'] = sorted(dirnames)
+        data['FILES'] = sorted(filenames)
+        data['PATH'] = path.replace('//', '/')
+
+        info = {}
+        info['count'] = len(dirnames) + len(filenames)
+        info['row'] = page_size
+        info['p'] = page
+        info['tojs'] = 'getFiles'
+        pageObj = mw.getPageObject(info, '1,2,3,4,5,6,7,8')
+        data['PAGE'] = pageObj[0]
+
+        return mw.getJson(data)
 
     def getDir(self, path, page=1, page_size=10, search=None):
         data = {}
@@ -843,31 +918,14 @@ class files_api:
                 continue
             try:
                 filePath = path + '/' + filename
-                link = ''
-                if os.path.islink(filePath):
-                    filePath = os.readlink(filePath)
-                    link = ' -> ' + filePath
-                    if not os.path.exists(filePath):
-                        filePath = path + '/' + filePath
-                    if not os.path.exists(filePath):
-                        continue
+                if not os.path.exists(filePath):
+                    continue
 
-                stat = os.stat(filePath)
-                accept = str(oct(stat.st_mode)[-3:])
-                mtime = str(int(stat.st_mtime))
-                user = ''
-                try:
-                    user = pwd.getpwuid(stat.st_uid).pw_name
-                except Exception as ee:
-                    user = str(stat.st_uid)
-
-                size = str(stat.st_size)
+                file_stats = self.__get_stats(filePath, path)
                 if os.path.isdir(filePath):
-                    dirnames.append(filename + ';' + size + ';' +
-                                    mtime + ';' + accept + ';' + user + ';' + link)
+                    dirnames.append(file_stats)
                 else:
-                    filenames.append(filename + ';' + size + ';' +
-                                     mtime + ';' + accept + ';' + user + ';' + link)
+                    filenames.append(file_stats)
                 n += 1
             except Exception as e:
                 continue
@@ -876,3 +934,28 @@ class files_api:
         data['PATH'] = path.replace('//', '/')
 
         return mw.getJson(data)
+
+    def __get_stats(self, filename, path=None):
+        filename = filename.replace('//', '/')
+        try:
+            stat = os.stat(filename)
+            accept = str(oct(stat.st_mode)[-3:])
+            mtime = str(int(stat.st_mtime))
+            user = ''
+            try:
+                user = str(pwd.getpwuid(stat.st_uid).pw_name)
+            except:
+                user = str(stat.st_uid)
+            size = str(stat.st_size)
+            link = ''
+            if os.path.islink(filename):
+                link = ' -> ' + os.readlink(filename)
+
+            if path:
+                tmp_path = (path + '/').replace('//', '/')
+                filename = filename.replace(tmp_path, '', 1)
+
+            return filename + ';' + size + ';' + mtime + ';' + accept + ';' + user + ';' + link
+        except Exception as e:
+            # print(e)
+            return ';;;;;'

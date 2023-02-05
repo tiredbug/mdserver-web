@@ -6,12 +6,13 @@ import os
 import time
 import shutil
 import uuid
+import json
 import traceback
+import socket
 
 # reload(sys)
 #  sys.setdefaultencoding('utf-8')
-
-
+import paramiko
 from datetime import timedelta
 
 from flask import Flask
@@ -26,8 +27,10 @@ from flask import render_template_string, abort
 from flask_caching import Cache
 from flask_session import Session
 
+
+from whitenoise import WhiteNoise
+
 sys.path.append(os.getcwd() + "/class/core")
-# sys.path.append("/usr/local/lib/python3.6/site-packages")
 
 import db
 import mw
@@ -35,6 +38,9 @@ import config_api
 
 app = Flask(__name__, template_folder='templates/default')
 app.config.version = config_api.config_api().getVersion()
+
+app.wsgi_app = WhiteNoise(
+    app.wsgi_app, root="route/static/", prefix="static/", max_age=604800)
 
 cache = Cache(config={'CACHE_TYPE': 'simple'})
 cache.init_app(app, config={'CACHE_TYPE': 'simple'})
@@ -62,12 +68,34 @@ app.config['SESSION_USE_SIGNER'] = True
 app.config['SESSION_KEY_PREFIX'] = 'MW_:'
 app.config['SESSION_COOKIE_NAME'] = "MW_VER_1"
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=31)
+
+if mw.isAppleSystem():
+    app.config['DEBUG'] = True
+
 # Session(app)
+
+# 设置BasicAuth
+basic_auth_conf = 'data/basic_auth.json'
+app.config['BASIC_AUTH_OPEN'] = False
+if os.path.exists(basic_auth_conf):
+    try:
+        ba_conf = json.loads(mw.readFile(basic_auth_conf))
+        # print(ba_conf)
+        app.config['BASIC_AUTH_USERNAME'] = ba_conf['basic_user']
+        app.config['BASIC_AUTH_PASSWORD'] = ba_conf['basic_pwd']
+        app.config['BASIC_AUTH_OPEN'] = ba_conf['open']
+        app.config['BASIC_AUTH_FORCE'] = True
+    except Exception as e:
+        print(e)
 
 # socketio
 from flask_socketio import SocketIO, emit, send
 socketio = SocketIO()
 socketio.init_app(app)
+
+# sockets
+from flask_sockets import Sockets
+sockets = Sockets(app)
 
 # from gevent.pywsgi import WSGIServer
 # from geventwebsocket.handler import WebSocketHandler
@@ -76,12 +104,39 @@ socketio.init_app(app)
 # http_server.serve_forever()
 
 # debug macosx dev
-if mw.isAppleSystem():
+if mw.isDebugMode():
     app.debug = True
     app.config.version = app.config.version + str(time.time())
 
 import common
 common.init()
+
+
+# ----------  error function start -----------------
+def getErrorNum(key, limit=None):
+    key = mw.md5(key)
+    num = cache.get(key)
+    if not num:
+        num = 0
+    if not limit:
+        return num
+    if limit > num:
+        return True
+    return False
+
+
+def setErrorNum(key, empty=False, expire=3600):
+    key = mw.md5(key)
+    num = cache.get(key)
+    if not num:
+        num = 0
+    else:
+        if empty:
+            cache.delete(key)
+            return True
+    cache.set(key, num + 1, expire)
+    return True
+# ----------  error function end -----------------
 
 
 def funConvert(fun):
@@ -93,11 +148,42 @@ def funConvert(fun):
     return func
 
 
+def sendAuthenticated():
+    # 发送http认证信息
+    request_host = mw.getHostAddr()
+    result = Response(
+        '', 401, {'WWW-Authenticate': 'Basic realm="%s"' % request_host.strip()})
+    if not 'login' in session and not 'admin_auth' in session:
+        session.clear()
+    return result
+
+
+@app.before_request
+def requestCheck():
+    # Flask请求勾子
+    if app.config['BASIC_AUTH_OPEN']:
+        auth = request.authorization
+        if request.path in ['/download', '/hook', '/down']:
+            return
+
+        if not auth:
+            return sendAuthenticated()
+        salt = '_md_salt'
+        if mw.md5(auth.username.strip() + salt) != app.config['BASIC_AUTH_USERNAME'] \
+                or mw.md5(auth.password.strip() + salt) != app.config['BASIC_AUTH_PASSWORD']:
+            return sendAuthenticated()
+
+    domain_check = mw.checkDomainPanel()
+    if domain_check:
+        return domain_check
+
+
 def isLogined():
     # print('isLogined', session)
     if 'login' in session and 'username' in session and session['login'] == True:
         userInfo = mw.M('users').where(
             "id=?", (1,)).field('id,username,password').find()
+        # print(userInfo)
         if userInfo['username'] != session['username']:
             return False
 
@@ -108,13 +194,17 @@ def isLogined():
             session['overdue'] = int(time.time()) + 7 * 24 * 60 * 60
             return False
 
+        if 'tmp_login_expire' in session and now_time > int(session['tmp_login_expire']):
+            session.clear()
+            return False
+
         return True
 
-    if os.path.exists('data/api_login.txt'):
-        content = mw.readFile('data/api_login.txt')
-        session['login'] = True
-        session['username'] = content
-        os.remove('data/api_login.txt')
+    # if os.path.exists('data/api_login.txt'):
+    #     content = mw.readFile('data/api_login.txt')
+    #     session['login'] = True
+    #     session['username'] = content
+    #     os.remove('data/api_login.txt')
     return False
 
 
@@ -129,18 +219,50 @@ def publicObject(toObject, func, action=None, get=None):
         return mw.getJson(data)
     except Exception as e:
         # API发生错误记录
-        print(traceback.print_exc())
+        if mw.isDebugMode():
+            print(traceback.print_exc())
         data = {'msg': '访问异常:' + str(e) + '!', "status": False}
         return mw.getJson(data)
 
 
-@app.route("/debug")
-def debug():
-    print(sys.version_info)
-    print(session)
-    os = mw.getOs()
-    print(os)
-    return mw.getLocalIp()
+# @app.route("/debug")
+# def debug():
+#     print(sys.version_info)
+#     print(session)
+#     os = mw.getOs()
+#     print(os)
+#     return mw.getLocalIp()
+
+@app.route("/.well-known/acme-challenge/<val>")
+def wellknow(val=None):
+    # 申请面板ssl使用
+    f = mw.getRunDir() + "/tmp/.well-known/acme-challenge/" + val
+    if os.path.exists(f):
+        return mw.readFile(f)
+    return ''
+
+
+@app.route("/hook", methods=['POST', 'GET'])
+def webhook():
+    # 仅针对webhook插件
+    input_args = {
+        'access_key': request.args.get('access_key', '').strip(),
+        'params': request.args.get('params', '').strip()
+    }
+
+    if request.method == 'POST':
+        input_args = {
+            'access_key': request.form.get('access_key', '').strip(),
+            'params': request.form.get('params', '').strip()
+        }
+
+    wh_install_path = mw.getServerDir() + '/webhook'
+    if not os.path.exists(wh_install_path):
+        return mw.returnJson(False, '请先安装WebHook插件!')
+
+    sys.path.append('plugins/webhook')
+    import index
+    return index.runShellArgs(input_args)
 
 
 @app.route('/close')
@@ -182,29 +304,42 @@ def checkLogin():
 
 @app.route("/do_login", methods=['POST'])
 def doLogin():
+    login_cache_count = 5
+    login_cache_limit = cache.get('login_cache_limit')
+
+    filename = 'data/close.pl'
+    if os.path.exists(filename):
+        return mw.returnJson(False, '面板已经关闭!')
+
     username = request.form.get('username', '').strip()
     password = request.form.get('password', '').strip()
     code = request.form.get('code', '').strip()
     # print(session)
     if 'code' in session:
         if session['code'] != mw.md5(code):
-            return mw.returnJson(False, '验证码错误,请重新输入!')
+            if login_cache_limit == None:
+                login_cache_limit = 1
+            else:
+                login_cache_limit = int(login_cache_limit) + 1
+
+            if login_cache_limit >= login_cache_count:
+                mw.writeFile(filename, 'True')
+                return mw.returnJson(False, '面板已经关闭!')
+
+            cache.set('login_cache_limit', login_cache_limit, timeout=10000)
+            login_cache_limit = cache.get('login_cache_limit')
+            code_msg = mw.getInfo("验证码错误,您还可以尝试[{1}]次!", (str(
+                login_cache_count - login_cache_limit)))
+            mw.writeLog('用户登录', code_msg)
+            return mw.returnJson(False, code_msg)
 
     userInfo = mw.M('users').where(
         "id=?", (1,)).field('id,username,password').find()
 
     # print(userInfo)
     # print(password)
-
     password = mw.md5(password)
-
     # print('md5-pass', password)
-
-    login_cache_count = 5
-    login_cache_limit = cache.get('login_cache_limit')
-    filename = 'data/close.pl'
-    if os.path.exists(filename):
-        return mw.returnJson(False, '面板已经关闭!')
 
     if userInfo['username'] != username or userInfo['password'] != password:
         msg = "<a style='color: red'>密码错误</a>,帐号:{1},密码:{2},登录IP:{3}", ((
@@ -231,7 +366,7 @@ def doLogin():
     # session['overdue'] = int(time.time()) + 7
 
     # fix 跳转时,数据消失，可能是跨域问题
-    mw.writeFile('data/api_login.txt', userInfo['username'])
+    # mw.writeFile('data/api_login.txt', userInfo['username'])
     return mw.returnJson(True, '登录成功,正在跳转...')
 
 
@@ -262,6 +397,94 @@ def admin_safe_path(path, req, data, pageFile):
     return render_template(req + '.html', data=data)
 
 
+def login_temp_user(token):
+    if len(token) != 48:
+        return '错误的参数!'
+
+    skey = mw.getClientIp() + '_temp_login'
+    if not getErrorNum(skey, 10):
+        return '连续10次验证失败，禁止1小时'
+
+    stime = int(time.time())
+    data = mw.M('temp_login').where('state=? and expire>?',
+                                    (0, stime)).field('id,token,salt,expire,addtime').find()
+    if not data:
+        setErrorNum(skey)
+        return '验证失败!'
+
+    if stime > int(data['expire']):
+        setErrorNum(skey)
+        return "过期"
+
+    r_token = mw.md5(token + data['salt'])
+    if r_token != data['token']:
+        setErrorNum(skey)
+        return '验证失败!'
+
+    userInfo = mw.M('users').where(
+        "id=?", (1,)).field('id,username').find()
+    session['login'] = True
+    session['username'] = userInfo['username']
+    session['tmp_login'] = True
+    session['tmp_login_id'] = str(data['id'])
+    session['tmp_login_expire'] = int(data['expire'])
+    session['uid'] = data['id']
+
+    login_addr = mw.getClientIp() + ":" + str(request.environ.get('REMOTE_PORT'))
+    mw.writeLog('用户登录', "登录成功,帐号:{1},登录IP:{2}",
+                (userInfo['username'], login_addr))
+    mw.M('temp_login').where('id=?', (data['id'],)).update(
+        {"login_time": stime, 'state': 1, 'login_addr': login_addr})
+
+    # print(session)
+    return redirect('/')
+
+
+@app.route('/api/<reqClass>/<reqAction>', methods=['POST', 'GET'])
+def api(reqClass=None, reqAction=None, reqData=None):
+
+    comReturn = common.local()
+    if comReturn:
+        return comReturn
+
+    import config_api
+    isOk, data = config_api.config_api().checkPanelToken()
+    if not isOk:
+        return mw.returnJson(False, '未开启API')
+
+    request_time = request.form.get('request_time', '')
+    request_token = request.form.get('request_token', '')
+    request_ip = request.remote_addr
+
+    token_md5 = mw.md5(str(request_time) + mw.md5(data['token_crypt']))
+
+    if not (token_md5 == request_token):
+        return mw.returnJson(False, '密钥错误')
+
+    if not mw.inArray(data['limit_addr'], request_ip):
+        return mw.returnJson(False, '非法请求')
+
+    if reqClass == None:
+        return mw.returnJson(False, '请指定请求方法类')
+
+    if reqAction == None:
+        return mw.returnJson(False, '请指定请求方法')
+
+    classFile = ('config_api', 'crontab_api', 'files_api', 'firewall_api',
+                 'plugins_api', 'system_api', 'site_api', 'task_api')
+    className = reqClass + '_api'
+    if not className in classFile:
+        return "external api request error"
+
+    eval_str = "__import__('" + className + "')." + className + '()'
+    newInstance = eval(eval_str)
+
+    try:
+        return publicObject(newInstance, reqAction)
+    except Exception as e:
+        return mw.getTracebackInfo()
+
+
 @app.route('/<reqClass>/<reqAction>', methods=['POST', 'GET'])
 @app.route('/<reqClass>/', methods=['POST', 'GET'])
 @app.route('/<reqClass>', methods=['POST', 'GET'])
@@ -281,15 +504,21 @@ def index(reqClass=None, reqAction=None, reqData=None):
             reqClass = 'index'
 
         pageFile = ('config', 'control', 'crontab', 'files', 'firewall',
-                    'index', 'plugins', 'login', 'system', 'site', 'ssl', 'task', 'soft')
+                    'index', 'plugins', 'login', 'system', 'site', 'cert', 'ssl', 'task', 'soft')
+
+        if reqClass == 'login':
+            token = request.args.get('tmp_token', '').strip()
+            if token != '':
+                return login_temp_user(token)
 
         # 设置了安全路径
         ainfo = get_admin_safe()
 
         # 登录页
         if reqClass == 'login':
-            dologin = request.args.get('dologin', '')
-            if dologin == 'True':
+
+            signout = request.args.get('signout', '')
+            if signout == 'True':
                 session.clear()
                 session['login'] = False
                 session['overdue'] = 0
@@ -311,14 +540,14 @@ def index(reqClass=None, reqAction=None, reqData=None):
         return render_template(reqClass + '.html', data=data)
 
     if not isLogined():
-        return 'request error!'
+        return 'error request!'
 
     # API请求
     classFile = ('config_api', 'crontab_api', 'files_api', 'firewall_api',
                  'plugins_api', 'system_api', 'site_api', 'task_api')
     className = reqClass + '_api'
     if not className in classFile:
-        return "api request error"
+        return "api error request"
 
     eval_str = "__import__('" + className + "')." + className + '()'
     newInstance = eval(eval_str)
@@ -327,148 +556,45 @@ def index(reqClass=None, reqAction=None, reqData=None):
 
 
 ##################### ssh  start ###########################
-ssh = None
 shell = None
+shell_client = None
 
 
-def create_rsa():
-    # mw.execShell("rm -f /root/.ssh/*")
-    if not os.path.exists('/root/.ssh/authorized_keys'):
-        mw.execShell('touch /root/.ssh/authorized_keys')
+@socketio.on('webssh_websocketio')
+def webssh_websocketio(data):
+    if not isLogined():
+        emit('server_response', {'data': '会话丢失，请重新登陆面板!\r\n'})
+        return
 
-    if not os.path.exists('/root/.ssh/id_rsa.pub') and os.path.exists('/root/.ssh/id_rsa'):
-        mw.execShell(
-            'echo y | ssh-keygen -q -t rsa -P "" -f /root/.ssh/id_rsa')
-    else:
-        mw.execShell('ssh-keygen -q -t rsa -P "" -f /root/.ssh/id_rsa')
+    global shell_client
+    if not shell_client:
+        import ssh_terminal
+        shell_client = ssh_terminal.ssh_terminal()
 
-    mw.execShell('cat /root/.ssh/id_rsa.pub >> /root/.ssh/authorized_keys')
-    mw.execShell('chmod 600 /root/.ssh/authorized_keys')
-
-
-def clear_ssh():
-    # 服务器IP
-    ip = mw.getHostAddr()
-    sh = '''
-#!/bin/bash
-PLIST=`who | grep localhost | awk '{print $2}'`
-for i in $PLIST
-do
-    ps -t /dev/$i |grep -v TTY | awk '{print $1}' | xargs kill -9
-done
-
-#getHostAddr
-PLIST=`who | grep "${ip}" | awk '{print $2}'`
-for i in $PLIST
-do
-    ps -t /dev/$i |grep -v TTY | awk '{print $1}' | xargs kill -9
-done
-'''
-    if not mw.isAppleSystem():
-        info = mw.execShell(sh)
-        print(info[0], info[1])
-
-
-def connect_ssh():
-    # print 'connect_ssh ....'
-    # clear_ssh()
-    global shell, ssh
-    if not os.path.exists('/root/.ssh/id_rsa') or not os.path.exists('/root/.ssh/id_rsa.pub'):
-        create_rsa()
-
-    # 检查是否写入authorized_keys
-    data = mw.execShell("cat /root/.ssh/id_rsa.pub | awk '{print $3}'")
-    if data[0] != "":
-        ak_data = mw.execShell(
-            "cat /root/.ssh/authorized_keys | grep " + data[0])
-        if ak_data[0] == "":
-            mw.execShell(
-                'cat /root/.ssh/id_rsa.pub >> /root/.ssh/authorized_keys')
-            mw.execShell('chmod 600 /root/.ssh/authorized_keys')
-
-    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-
-    try:
-        ssh.connect(mw.getHostAddr(), mw.getSSHPort(), timeout=5)
-    except Exception as e:
-        ssh.connect('127.0.0.1', mw.getSSHPort())
-    except Exception as e:
-        ssh.connect('localhost', mw.getSSHPort())
-    except Exception as e:
-        return False
-
-    shell = ssh.invoke_shell(term='xterm', width=83, height=21)
-    shell.setblocking(0)
-    return True
-
-
-# 取数据对象
-def get_input_data(data):
-    pdata = common.dict_obj()
-    for key in data.keys():
-        pdata[key] = str(data[key])
-    return pdata
+    shell_client.run(request.sid, data)
+    return
 
 
 @socketio.on('webssh')
 def webssh(msg):
-    # print('webssh ...')
+    global shell
     if not isLogined():
         emit('server_response', {'data': '会话丢失，请重新登陆面板!\r\n'})
         return None
-    global shell, ssh
-    ssh_success = True
+
     if not shell:
-        ssh_success = connect_ssh()
-    if not shell:
-        emit('server_response', {'data': '连接SSH服务失败!\r\n'})
-        return
+        shell = mw.connectSsh()
+
     if shell.exit_status_ready():
-        ssh_success = connect_ssh()
-    if not ssh_success:
-        emit('server_response', {'data': '连接SSH服务失败!\r\n'})
-        return
-    shell.send(msg)
-    try:
-        time.sleep(0.005)
-        recv = shell.recv(4096)
-        emit('server_response', {'data': recv.decode("utf-8")})
-    except Exception as ex:
-        pass
-        # print 'webssh:' + str(ex)
+        shell = mw.connectSsh()
 
-
-@socketio.on('connect_event')
-def connected_msg(msg):
-    if not isLogined():
-        emit('server_response', {'data': '会话丢失，请重新登陆面板!\r\n'})
-        return None
-    global shell, ssh
-    ssh_success = True
-    if not shell:
-        ssh_success = connect_ssh()
-        # print(ssh_success)
-    if not ssh_success:
-        emit('server_response', {'data': '连接SSH服务失败!\r\n'})
-        return
-    try:
-        recv = shell.recv(8192)
-        # print recv.decode("utf-8")
-        emit('server_response', {'data': recv.decode("utf-8")})
-    except Exception as e:
-        pass
-        # print 'connected_msg:' + str(e)
-
-
-if not mw.isAppleSystem():
-    try:
-        import paramiko
-        ssh = paramiko.SSHClient()
-
-        # 启动尝试时连接
-        # connect_ssh()
-    except Exception as e:
-        print("本地终端无法使用")
-
+    if shell:
+        shell.send(msg)
+        try:
+            time.sleep(0.005)
+            recv = shell.recv(4096)
+            emit('server_response', {'data': recv.decode("utf-8")})
+        except Exception as ex:
+            emit('server_response', {'data': str(ex)})
 
 ##################### ssh  end ###########################

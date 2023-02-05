@@ -1,5 +1,18 @@
 # coding: utf-8
 
+# ---------------------------------------------------------------------------------
+# MW-Linux面板
+# ---------------------------------------------------------------------------------
+# copyright (c) 2018-∞(https://github.com/midoks/mdserver-web) All rights reserved.
+# ---------------------------------------------------------------------------------
+# Author: midoks <midoks@163.com>
+# ---------------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------------
+# 计划任务操作
+# ---------------------------------------------------------------------------------
+
+
 import psutil
 import time
 import os
@@ -68,8 +81,8 @@ class crontab_api:
                     _list[i]['where_hour']), str(_list[i]['where_minute'])))
             data.append(tmp)
 
-        _ret = {}
-        _ret['data'] = data
+        rdata = {}
+        rdata['data'] = data
 
         count = mw.M('crontab').where('', ()).count()
         _page = {}
@@ -78,9 +91,17 @@ class crontab_api:
         _page['row'] = psize
         _page['tojs'] = "getCronData"
 
-        _ret['list'] = mw.getPage(_page)
-        _ret['p'] = p
-        return mw.getJson(_ret)
+        rdata['list'] = mw.getPage(_page)
+        rdata['p'] = p
+
+        # backup hook
+        bh_file = mw.getPanelDataDir() + "/hook_backup.json"
+        if os.path.exists(bh_file):
+            hb_data = mw.readFile(bh_file)
+            hb_data = json.loads(hb_data)
+            rdata['backup_hook'] = hb_data
+
+        return mw.getJson(rdata)
 
     # 设置计划任务状态
     def setCronStatusApi(self):
@@ -106,6 +127,56 @@ class crontab_api:
         data = mw.M('crontab').where(
             'id=?', (sid,)).field(self.field).find()
         return mw.getJson(data)
+
+    # 参数校验
+    def cronCheck(self, params):
+
+        if params['stype'] == 'site' or params['stype'] == 'database' or params['stype'].find('database_') > -1 or params['stype'] == 'logs' or params['stype'] == 'path':
+            if params['save'] == '':
+                return False, '保留份数不能为空!'
+
+        if params['type'] == 'day':
+            if params['hour'] == '':
+                return False, '小时不能为空!'
+            if params['minute'] == '':
+                return False, '分钟不能为空!'
+
+        if params['type'] == 'day-n':
+            if params['where1'] == '':
+                return False, '天不能为空!'
+            if params['hour'] == '':
+                return False, '小时不能为空!'
+            if params['minute'] == '':
+                return False, '分钟不能为空!'
+        if params['type'] == 'hour':
+            if params['minute'] == '':
+                return False, '分钟不能为空!'
+
+        if params['type'] == 'hour-n':
+            if params['where1'] == '':
+                return False, '小时不能为空!'
+            if params['minute'] == '':
+                return False, '分钟不能为空!'
+
+        if params['type'] == 'minute-n':
+            if params['where1'] == '':
+                return False, '分钟不能为空!'
+
+        if params['type'] == 'week':
+            if params['hour'] == '':
+                return False, '小时不能为空!'
+            if params['minute'] == '':
+                return False, '分钟不能为空!'
+
+        if params['type'] == 'month':
+            if params['where1'] == '':
+                return False, '日不能为空!'
+            if params['hour'] == '':
+                return False, '小时不能为空!'
+            if params['minute'] == '':
+                return False, '分钟不能为空!'
+
+        return True, 'OK'
 
     def modifyCrondApi(self):
         sid = request.form.get('id', '')
@@ -139,6 +210,11 @@ class crontab_api:
             'sbody': sbody,
             'urladdress': urladdress,
         }
+
+        is_check_pass, msg = self.cronCheck(params)
+        if not is_check_pass:
+            return mw.returnJson(is_check_pass, msg)
+
         cuonConfig, get, name = self.getCrondCycle(params)
         cronInfo = mw.M('crontab').where(
             'id=?', (sid,)).field(self.field).find()
@@ -154,8 +230,8 @@ class crontab_api:
         cronInfo['sbody'] = get['sbody']
         cronInfo['urladdress'] = get['urladdress']
 
-        addData = mw.M('crontab').where('id=?', (sid,)).save('name,type,where1,where_hour,where_minute,save,backup_to,sbody,urladdress', (get[
-            'name'], field_type, get['where1'], get['hour'], get['minute'], get['save'], get['backup_to'], get['sbody'], get['urladdress']))
+        addData = mw.M('crontab').where('id=?', (sid,)).save('name,type,where1,where_hour,where_minute,save,backup_to, sname, sbody,urladdress',
+                                                             (iname, field_type, get['where1'], get['hour'], get['minute'], get['save'], get['backup_to'], sname, get['sbody'], get['urladdress']))
         self.removeForCrond(cronInfo['echo'])
         self.syncToCrond(cronInfo)
         mw.writeLog('计划任务', '修改计划任务[' + cronInfo['name'] + ']成功')
@@ -201,6 +277,10 @@ class crontab_api:
             'sbody': sbody,
             'urladdress': urladdress,
         }
+
+        is_check_pass, msg = self.cronCheck(params)
+        if not is_check_pass:
+            return mw.returnJson(is_check_pass, msg)
 
         addData = self.add(params)
         if addData > 0:
@@ -297,28 +377,46 @@ class crontab_api:
         stype = request.form.get('type', '')
 
         bak_data = []
-
-        if stype == 'sites' or stype == 'databases':
+        if stype == 'site' or stype == 'sites' or stype == 'database' or stype.find('database_') > -1 or stype == 'path':
             hookPath = mw.getPanelDataDir() + "/hook_backup.json"
             if os.path.exists(hookPath):
                 t = mw.readFile(hookPath)
                 bak_data = json.loads(t)
 
-        if stype == 'databases':
+        if stype == 'database' or stype.find('database_') > -1:
+            sqlite3_name = 'mysql'
+            path = mw.getServerDir() + '/mysql'
+            if stype != 'database':
+                soft_name = stype.replace('database_', '')
+                path = mw.getServerDir() + '/' + soft_name
+
+                if soft_name == 'postgresql':
+                    sqlite3_name = 'pgsql'
+
             db_list = {}
             db_list['orderOpt'] = bak_data
-            path = mw.getServerDir() + '/mysql'
-            if not os.path.exists(path + '/mysql.db'):
+
+            if not os.path.exists(path + '/' + sqlite3_name + '.db'):
                 db_list['data'] = []
             else:
                 db_list['data'] = mw.M('databases').dbPos(
-                    path, 'mysql').field('name,ps').select()
+                    path, sqlite3_name).field('name,ps').select()
+            return mw.getJson(db_list)
+
+        if stype == 'path':
+            db_list = {}
+            db_list['data'] = [{"name": mw.getWwwDir(), "ps": "www"}]
+            db_list['orderOpt'] = bak_data
             return mw.getJson(db_list)
 
         data = {}
         data['orderOpt'] = bak_data
 
-        data['data'] = mw.M(stype).field('name,ps').select()
+        default_db = 'sites'
+        # if stype == 'site' or stype == 'logs':
+        #     stype == 'sites'
+
+        data['data'] = mw.M(default_db).field('name,ps').select()
         return mw.getJson(data)
     ##### ----- start ----- ###
 
@@ -409,9 +507,25 @@ class crontab_api:
             shell = param.sFile
         else:
             head = "#!/bin/bash\nPATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin:~/bin\nexport PATH\n"
+
+            source_bin_activate = '''
+export LANG=en_US.UTF-8
+MW_PATH=%s/bin/activate
+if [ -f $MW_PATH ];then
+    source $MW_PATH
+fi''' % (mw.getRunDir(),)
+
+            head = head + source_bin_activate + "\n"
             log = '.log'
 
-            script_dir = mw.getServerDir() + "/mdserver-web/scripts"
+            script_dir = mw.getRunDir() + "/scripts"
+            source_stype = 'database'
+            if stype.find('database_') > -1:
+                plugin_name = stype.replace('database_', '')
+                script_dir = mw.getRunDir() + "/plugins/" + plugin_name + "/scripts"
+
+                source_stype = stype
+                stype = 'database'
 
             wheres = {
                 'path': head + "python3 " + script_dir + "/backup.py path " + param['sname'] + " " + str(param['save']),
@@ -423,13 +537,14 @@ class crontab_api:
             if param['backup_to'] != 'localhost':
                 cfile = mw.getPluginDir() + "/" + \
                     param['backup_to'] + "/index.py"
-                wheres = {
-                    'path': head + "python3 " + cfile + " path " + param['sname'] + " " + str(param['save']),
-                    'site':   head + "python3 " + cfile + " site " + param['sname'] + " " + str(param['save']),
-                    'database': head + "python3 " + cfile + " database " + param['sname'] + " " + str(param['save']),
-                    'logs':   head + "python3 " + script_dir + "/logs_backup.py " + param['sname'] + log + " " + str(param['save']),
-                    'rememory': head + "/bin/bash " + script_dir + '/rememory.sh'
-                }
+
+                wheres['path'] = head + "python3 " + cfile + \
+                    " path " + param['sname'] + " " + str(param['save'])
+                wheres['site'] = head + "python3 " + cfile + \
+                    " site " + param['sname'] + " " + str(param['save'])
+                wheres['database'] = head + "python3 " + cfile + " " + \
+                    source_stype + " " + \
+                    param['sname'] + " " + str(param['save'])
             try:
                 shell = wheres[stype]
             except:
@@ -493,9 +608,9 @@ echo "--------------------------------------------------------------------------
     # 重载配置
     def crondReload(self):
         if mw.isAppleSystem():
+            # mw.execShell('/usr/sbin/cron restart')
             if os.path.exists('/etc/crontab'):
                 pass
-                # mw.execShell('/usr/sbin/cron restart')
         else:
             if os.path.exists('/etc/init.d/crond'):
                 mw.execShell('/etc/init.d/crond reload')
