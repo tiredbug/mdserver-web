@@ -1,4 +1,17 @@
-# coding: utf-8
+# coding:utf-8
+
+# ---------------------------------------------------------------------------------
+# MW-Linux面板
+# ---------------------------------------------------------------------------------
+# copyright (c) 2018-∞(https://github.com/midoks/mdserver-web) All rights reserved.
+# ---------------------------------------------------------------------------------
+# Author: midoks <midoks@163.com>
+# ---------------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------------
+# 核心方法库
+# ---------------------------------------------------------------------------------
+
 
 import os
 import sys
@@ -45,6 +58,12 @@ def execShell(cmdstring, cwd=None, timeout=None, shell=True):
     return (t1, t2)
 
 
+def getTracebackInfo():
+    import traceback
+    errorMsg = traceback.format_exc()
+    return errorMsg
+
+
 def getRunDir():
     return os.getcwd()
 
@@ -69,10 +88,6 @@ def getLogsDir():
     return getRootDir() + '/wwwlogs'
 
 
-def getBackupDir():
-    return getRootDir() + '/backup'
-
-
 def getWwwDir():
     file = getRunDir() + '/data/site.pl'
     if os.path.exists(file):
@@ -85,9 +100,27 @@ def setWwwDir(wdir):
     return writeFile(file, wdir)
 
 
+def getBackupDir():
+    file = getRunDir() + '/data/backup.pl'
+    if os.path.exists(file):
+        return readFile(file).strip()
+    return getRootDir() + '/backup'
+
+
 def setBackupDir(bdir):
     file = getRunDir() + '/data/backup.pl'
     return writeFile(file, bdir)
+
+
+def getAcmeDir():
+    acme = '/root/.acme.sh'
+    if isAppleSystem():
+        cmd = "who | sed -n '2, 1p' |awk '{print $1}'"
+        user = execShell(cmd)[0].strip()
+        acme = '/Users/' + user + '/.acme.sh'
+    if not os.path.exists(acme):
+        acme = '/.acme.sh'
+    return acme
 
 
 def triggerTask():
@@ -110,8 +143,34 @@ def systemdCfgDir():
     return "/tmp"
 
 
+def getSslCrt():
+    if os.path.exists('/etc/ssl/certs/ca-certificates.crt'):
+        return '/etc/ssl/certs/ca-certificates.crt'
+    if os.path.exists('/etc/pki/tls/certs/ca-bundle.crt'):
+        return '/etc/pki/tls/certs/ca-bundle.crt'
+    return ''
+
+
 def getOs():
     return sys.platform
+
+
+def getOsName():
+    cmd = "cat /etc/*-release | grep PRETTY_NAME |awk -F = '{print $2}' | awk -F '\"' '{print $2}'| awk '{print $1}'"
+    data = execShell(cmd)
+    return data[0].strip().lower()
+
+
+def getOsID():
+    cmd = "cat /etc/*-release | grep VERSION_ID | awk -F = '{print $2}' | awk -F '\"' '{print $2}'"
+    data = execShell(cmd)
+    return data[0].strip()
+
+
+def getFileSuffix(file):
+    tmp = file.split('.')
+    ext = tmp[len(tmp) - 1]
+    return ext
 
 
 def isAppleSystem():
@@ -160,6 +219,15 @@ def isInstalledWeb():
     return False
 
 
+def isIpAddr(ip):
+    check_ip = re.compile(
+        '^(1\d{2}|2[0-4]\d|25[0-5]|[1-9]\d|[1-9])\.(1\d{2}|2[0-4]\d|25[0-5]|[1-9]\d|\d)\.(1\d{2}|2[0-4]\d|25[0-5]|[1-9]\d|\d)\.(1\d{2}|2[0-4]\d|25[0-5]|[1-9]\d|\d)$')
+    if check_ip.match(ip):
+        return True
+    else:
+        return False
+
+
 def restartWeb():
     return opWeb("reload")
 
@@ -194,7 +262,7 @@ def checkWebConfig():
     cmd = "ulimit -n 10240 && " + op_dir + \
         "/sbin/nginx -t -c " + op_dir + "/conf/nginx.conf"
     result = execShell(cmd)
-    searchStr = 'successful'
+    searchStr = 'test is successful'
     if result[1].find(searchStr) == -1:
         msg = getInfo('配置文件错误: {1}', (result[1],))
         writeLog("软件管理", msg)
@@ -238,11 +306,11 @@ def getPageObject(args, result='1,2,3,4,5,8'):
     return (page.GetPage(info, result), page)
 
 
-def md5(str):
+def md5(content):
     # 生成MD5
     try:
         m = hashlib.md5()
-        m.update(str.encode("utf-8"))
+        m.update(content.encode("utf-8"))
         return m.hexdigest()
     except Exception as ex:
         return False
@@ -386,32 +454,52 @@ def getDate():
     return time.strftime('%Y-%m-%d %X', time.localtime())
 
 
-def writeLog(type, logMsg, args=()):
+def getDataFromInt(val):
+    time_format = '%Y-%m-%d %H:%M:%S'
+    time_str = time.localtime(val)
+    return time.strftime(time_format, time_str)
+
+
+def writeLog(stype, msg, args=()):
     # 写日志
+    uid = 1
+    try:
+        from flask import session
+        if 'uid' in session:
+            uid = session['uid']
+    except Exception as e:
+        pass
+        # print(getTracebackInfo())
+    return writeDbLog(stype, msg, args, uid)
+
+
+def writeDbLog(stype, msg, args=(), uid=1):
     try:
         import time
         import db
         import json
         sql = db.Sql()
-        mDate = time.strftime('%Y-%m-%d %X', time.localtime())
-        data = (type, logMsg, mDate)
-        result = sql.table('logs').add('type,log,addtime', data)
+        mdate = time.strftime('%Y-%m-%d %X', time.localtime())
+        wmsg = getInfo(msg, args)
+        data = (stype, wmsg, uid, mdate)
+        result = sql.table('logs').add('type,log,uid,addtime', data)
+        return True
     except Exception as e:
-        pass
+        return False
 
 
-def writeFile(filename, str):
+def writeFile(filename, content, mode='w+'):
     # 写文件内容
     try:
-        fp = open(filename, 'w+')
-        fp.write(str)
+        fp = open(filename, mode)
+        fp.write(content)
         fp.close()
         return True
     except Exception as e:
         return False
 
 
-def backFile(self, file, act=None):
+def backFile(file, act=None):
     """
         @name 备份配置文件
         @param file 需要备份的文件
@@ -420,10 +508,24 @@ def backFile(self, file, act=None):
     file_type = "_bak"
     if act:
         file_type = "_def"
-    execShell("/usr/bin/cp -p {0} {1}".format(file, file + file_type))
+
+    # print("cp -p {0} {1}".format(file, file + file_type))
+    execShell("cp -p {0} {1}".format(file, file + file_type))
 
 
-def restoreFile(self, file, act=None):
+def removeBackFile(file, act=None):
+    """
+        @name 删除备份配置文件
+        @param file 需要删除备份文件
+        @param act 如果存在，则还原默认配置
+    """
+    file_type = "_bak"
+    if act:
+        file_type = "_def"
+    execShell("rm -rf {0}".format(file + file_type))
+
+
+def restoreFile(file, act=None):
     """
         @name 还原配置文件
         @param file 需要还原的文件
@@ -432,7 +534,99 @@ def restoreFile(self, file, act=None):
     file_type = "_bak"
     if act:
         file_type = "_def"
-    execShell("/usr/bin/cp -p {1} {0}".format(file, file + file_type))
+    execShell("cp -p {1} {0}".format(file, file + file_type))
+
+
+def enPunycode(domain):
+    if sys.version_info[0] == 2:
+        domain = domain.encode('utf8')
+    tmp = domain.split('.')
+    newdomain = ''
+    for dkey in tmp:
+        if dkey == '*':
+            continue
+        # 匹配非ascii字符
+        match = re.search(u"[\x80-\xff]+", dkey)
+        if not match:
+            match = re.search(u"[\u4e00-\u9fa5]+", dkey)
+        if not match:
+            newdomain += dkey + '.'
+        else:
+            if sys.version_info[0] == 2:
+                newdomain += 'xn--' + \
+                    dkey.decode('utf-8').encode('punycode') + '.'
+            else:
+                newdomain += 'xn--' + \
+                    dkey.encode('punycode').decode('utf-8') + '.'
+    if tmp[0] == '*':
+        newdomain = "*." + newdomain
+    return newdomain[0:-1]
+
+
+def dePunycode(domain):
+    # punycode 转中文
+    tmp = domain.split('.')
+    newdomain = ''
+    for dkey in tmp:
+        if dkey.find('xn--') >= 0:
+            newdomain += dkey.replace('xn--',
+                                      '').encode('utf-8').decode('punycode') + '.'
+        else:
+            newdomain += dkey + '.'
+    return newdomain[0:-1]
+
+
+def enCrypt(key, strings):
+    # 加密字符串
+    try:
+        import base64
+        _key = md5(key).encode('utf-8')
+        _key = base64.urlsafe_b64encode(_key)
+
+        if type(strings) != bytes:
+            strings = strings.encode('utf-8')
+        import cryptography
+        from cryptography.fernet import Fernet
+        f = Fernet(_key)
+        result = f.encrypt(strings)
+        return result.decode('utf-8')
+    except:
+        print(getTracebackInfo())
+        return strings
+
+
+def deCrypt(key, strings):
+    # 解密字符串
+    try:
+        import base64
+        _key = md5(key).encode('utf-8')
+        _key = base64.urlsafe_b64encode(_key)
+
+        if type(strings) != bytes:
+            strings = strings.encode('utf-8')
+        from cryptography.fernet import Fernet
+        f = Fernet(_key)
+        result = f.decrypt(strings).decode('utf-8')
+        return result
+    except:
+        print(getTracebackInfo())
+        return strings
+
+
+def buildSoftLink(src, dst, force=False):
+    '''
+    建立软连接
+    '''
+    if not os.path.exists(src):
+        return False
+
+    if os.path.exists(dst) and force:
+        os.remove(dst)
+
+    if not os.path.exists(dst):
+        execShell('ln -sf "' + src + '" "' + dst + '"')
+        return True
+    return False
 
 
 def HttpGet(url, timeout=10):
@@ -478,6 +672,11 @@ def HttpGet2(url, timeout):
     import urllib.request
 
     try:
+        import ssl
+        try:
+            ssl._create_default_https_context = ssl._create_unverified_context
+        except:
+            pass
         req = urllib.request.urlopen(url, timeout=timeout)
         result = req.read().decode('utf-8')
         return result
@@ -676,6 +875,11 @@ def getLocalIpBack():
         return '127.0.0.1'
 
 
+def getClientIp():
+    from flask import request
+    return request.remote_addr.replace('::ffff:', '')
+
+
 def getLocalIp():
     filename = 'data/iplist.txt'
     try:
@@ -711,6 +915,14 @@ def inArray(arrays, searchStr):
     return False
 
 
+def formatDate(format="%Y-%m-%d %H:%M:%S", times=None):
+    # 格式化指定时间戳
+    if not times:
+        times = int(time.time())
+    time_local = time.localtime(times)
+    return time.strftime(format, time_local)
+
+
 def checkIp(ip):
     # 检查是否为IPv4地址
     import re
@@ -722,9 +934,94 @@ def checkIp(ip):
         return False
 
 
+def getHost(port=False):
+    from flask import request
+    host_tmp = request.headers.get('host')
+    if not host_tmp:
+        if request.url_root:
+            tmp = re.findall(r"(https|http)://([\w:\.-]+)", request.url_root)
+            if tmp:
+                host_tmp = tmp[0][1]
+    if not host_tmp:
+        host_tmp = getLocalIp() + ':' + readFile('data/port.pl').strip()
+    try:
+        if host_tmp.find(':') == -1:
+            host_tmp += ':80'
+    except:
+        host_tmp = "127.0.0.1:8888"
+    h = host_tmp.split(':')
+    if port:
+        return h[-1]
+    return ':'.join(h[0:-1])
+
+
+def getClientIp():
+    from flask import request
+    return request.remote_addr.replace('::ffff:', '')
+
+
+def checkDomainPanel():
+    tmp = getHost()
+    domain = readFile('data/bind_domain.pl')
+    port = readFile('data/port.pl').strip()
+
+    npid = getServerDir() + "/openresty/nginx/logs/nginx.pid"
+    if not os.path.exists(npid):
+        return False
+
+    nconf = getServerDir() + "/web_conf/nginx/vhost/panel.conf"
+    if os.path.exists(nconf):
+        port = "80"
+
+    if domain:
+        client_ip = getClientIp()
+        if client_ip in ['127.0.0.1', 'localhost', '::1']:
+            return False
+        if tmp.strip().lower() != domain.strip().lower():
+            from flask import Flask, redirect, request, url_for
+            to = "http://" + domain + ":" + str(port)
+            return redirect(to, code=302)
+    return False
+
+
+def createLinuxUser(user, group):
+    execShell("groupadd {}".format(group))
+    execShell('useradd -s /sbin/nologin -g {} {}'.format(user, group))
+    return True
+
+
+def setOwn(filename, user, group=None):
+    if isAppleSystem():
+        return True
+
+    # 设置用户组
+    if not os.path.exists(filename):
+        return False
+    from pwd import getpwnam
+    try:
+        user_info = getpwnam(user)
+        user = user_info.pw_uid
+        if group:
+            user_info = getpwnam(group)
+        group = user_info.pw_gid
+    except:
+        if user == 'www':
+            createLinuxUser(user)
+        # 如果指定用户或组不存在，则使用www
+        try:
+            user_info = getpwnam('www')
+        except:
+            createLinuxUser(user)
+            user_info = getpwnam('www')
+        user = user_info.pw_uid
+        group = user_info.pw_gid
+    os.chown(filename, user, group)
+    return True
+
+
 def checkPort(port):
     # 检查端口是否合法
-    ports = ['21', '25', '7200', '888']
+    ports = ['21', '443', '888']
     if port in ports:
         return False
     intport = int(port)
@@ -807,7 +1104,7 @@ def makeConf():
     file = getRunDir() + '/data/json/config.json'
     if not os.path.exists(file):
         c = {}
-        c['title'] = 'mdserver-web | linux面板'
+        c['title'] = '大圣面板'
         c['home'] = 'http://github/midoks/mdserver-web'
         c['recycle_bin'] = True
         c['template'] = 'default'
@@ -993,6 +1290,10 @@ def toSize(size):
     return str(round(size, 2)) + ' ' + b
 
 
+def getPathSuffix(path):
+    return os.path.splitext(path)[-1]
+
+
 def getMacAddress():
     # 获取mac
     import uuid
@@ -1038,13 +1339,107 @@ def get_string_arr(t):
                     t_arr.append(str(i) + str(j))
     return t_arr
 
+ # 转换时间
+
+
+def strfDate(sdate):
+    return time.strftime('%Y-%m-%d', time.strptime(sdate, '%Y%m%d%H%M%S'))
+
+
+# 获取证书名称
+def getCertName(certPath):
+    if not os.path.exists(certPath):
+        return None
+    try:
+        import OpenSSL
+        result = {}
+        x509 = OpenSSL.crypto.load_certificate(
+            OpenSSL.crypto.FILETYPE_PEM, readFile(certPath))
+        # 取产品名称
+        issuer = x509.get_issuer()
+        result['issuer'] = ''
+        if hasattr(issuer, 'CN'):
+            result['issuer'] = issuer.CN
+        if not result['issuer']:
+            is_key = [b'0', '0']
+            issue_comp = issuer.get_components()
+            if len(issue_comp) == 1:
+                is_key = [b'CN', 'CN']
+            for iss in issue_comp:
+                if iss[0] in is_key:
+                    result['issuer'] = iss[1].decode()
+                    break
+        if not result['issuer']:
+            if hasattr(issuer, 'O'):
+                result['issuer'] = issuer.O
+        # 取到期时间
+        result['notAfter'] = strfDate(
+            bytes.decode(x509.get_notAfter())[:-1])
+        # 取申请时间
+        result['notBefore'] = strfDate(
+            bytes.decode(x509.get_notBefore())[:-1])
+        # 取可选名称
+        result['dns'] = []
+        for i in range(x509.get_extension_count()):
+            s_name = x509.get_extension(i)
+            if s_name.get_short_name() in [b'subjectAltName', 'subjectAltName']:
+                s_dns = str(s_name).split(',')
+                for d in s_dns:
+                    result['dns'].append(d.split(':')[1])
+        subject = x509.get_subject().get_components()
+        # 取主要认证名称
+        if len(subject) == 1:
+            result['subject'] = subject[0][1].decode()
+        else:
+            if not result['dns']:
+                for sub in subject:
+                    if sub[0] == b'CN':
+                        result['subject'] = sub[1].decode()
+                        break
+                if 'subject' in result:
+                    result['dns'].append(result['subject'])
+            else:
+                result['subject'] = result['dns'][0]
+        result['endtime'] = int(int(time.mktime(time.strptime(
+            result['notAfter'], "%Y-%m-%d")) - time.time()) / 86400)
+        return result
+    except Exception as e:
+        # print(getTracebackInfo())
+        return None
+
+
+def createSSL():
+    # 自签证书
+    if os.path.exists('ssl/input.pl'):
+        return True
+    import OpenSSL
+    key = OpenSSL.crypto.PKey()
+    key.generate_key(OpenSSL.crypto.TYPE_RSA, 2048)
+    cert = OpenSSL.crypto.X509()
+    cert.set_serial_number(0)
+    cert.get_subject().CN = getLocalIp()
+    cert.set_issuer(cert.get_subject())
+    cert.gmtime_adj_notBefore(0)
+    cert.gmtime_adj_notAfter(86400 * 3650)
+    cert.set_pubkey(key)
+    cert.sign(key, 'md5')
+    cert_ca = OpenSSL.crypto.dump_certificate(
+        OpenSSL.crypto.FILETYPE_PEM, cert)
+    private_key = OpenSSL.crypto.dump_privatekey(
+        OpenSSL.crypto.FILETYPE_PEM, key)
+    if len(cert_ca) > 100 and len(private_key) > 100:
+        writeFile('ssl/cert.pem', cert_ca, 'wb+')
+        writeFile('ssl/private.pem', private_key, 'wb+')
+        return True
+    return False
+
 
 def getSSHPort():
     try:
         file = '/etc/ssh/sshd_config'
         conf = readFile(file)
-        rep = "#*Port\s+([0-9]+)\s*\n"
-        port = re.search(rep, conf).groups(0)[0]
+        rep = "(#*)?Port\s+([0-9]+)\s*\n"
+        port = re.search(rep, conf).groups(0)[1]
         return int(port)
     except:
         return 22
@@ -1106,3 +1501,115 @@ def getMyORMDb():
     import ormDb
     o = ormDb.ORM()
     return o
+
+
+##################### ssh  start #########################################
+def getSshDir():
+    if isAppleSystem():
+        user = execShell("who | sed -n '2, 1p' |awk '{print $1}'")[0].strip()
+        return '/Users/' + user + '/.ssh'
+    return '/root/.ssh'
+
+
+def createRsa():
+    # ssh-keygen -t rsa -P "" -C "midoks@163.com"
+    ssh_dir = getSshDir()
+    # mw.execShell("rm -f /root/.ssh/*")
+    if not os.path.exists(ssh_dir + '/authorized_keys'):
+        execShell('touch ' + ssh_dir + '/authorized_keys')
+
+    if not os.path.exists(ssh_dir + '/id_rsa.pub') and os.path.exists(ssh_dir + '/id_rsa'):
+        execShell('echo y | ssh-keygen -q -t rsa -P "" -f ' +
+                  ssh_dir + '/id_rsa')
+    else:
+        execShell('ssh-keygen -q -t rsa -P "" -f ' + ssh_dir + '/id_rsa')
+
+    execShell('cat ' + ssh_dir + '/id_rsa.pub >> ' +
+              ssh_dir + '/authorized_keys')
+    execShell('chmod 600 ' + ssh_dir + '/authorized_keys')
+
+
+def createSshInfo():
+    ssh_dir = getSshDir()
+    if not os.path.exists(ssh_dir + '/id_rsa') or not os.path.exists(ssh_dir + '/id_rsa.pub'):
+        createRsa()
+
+    # 检查是否写入authorized_keys
+    data = execShell("cat " + ssh_dir + "/id_rsa.pub | awk '{print $3}'")
+    if data[0] != "":
+        cmd = "cat " + ssh_dir + "/authorized_keys | grep " + data[0]
+        ak_data = execShell(cmd)
+        if ak_data[0] == "":
+            cmd = 'cat ' + ssh_dir + '/id_rsa.pub >> ' + ssh_dir + '/authorized_keys'
+            execShell(cmd)
+            execShell('chmod 600 ' + ssh_dir + '/authorized_keys')
+
+
+def connectSsh():
+    import paramiko
+    ssh = paramiko.SSHClient()
+    createSshInfo()
+    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+    port = getSSHPort()
+    try:
+        ssh.connect('127.0.0.1', port, timeout=5)
+    except Exception as e:
+        ssh.connect('localhost', port, timeout=5)
+    except Exception as e:
+        ssh.connect(getHostAddr(), port, timeout=30)
+    except Exception as e:
+        return False
+
+    shell = ssh.invoke_shell(term='xterm', width=83, height=21)
+    shell.setblocking(0)
+    return shell
+
+
+def clearSsh():
+    # 服务器IP
+    ip = getHostAddr()
+    sh = '''
+#!/bin/bash
+PLIST=`who | grep localhost | awk '{print $2}'`
+for i in $PLIST
+do
+    ps -t /dev/$i |grep -v TTY | awk '{print $1}' | xargs kill -9
+done
+
+# getHostAddr
+PLIST=`who | grep "${ip}" | awk '{print $2}'`
+for i in $PLIST
+do
+    ps -t /dev/$i |grep -v TTY | awk '{print $1}' | xargs kill -9
+done
+'''
+    if not isAppleSystem():
+        info = execShell(sh)
+        print(info[0], info[1])
+##################### ssh  end   #########################################
+
+# ---------------------------------------------------------------------------------
+# 打印相关 START
+# ---------------------------------------------------------------------------------
+
+
+def echoStart(tag):
+    print("=" * 90)
+    print("★开始{}[{}]".format(tag, formatDate()))
+    print("=" * 90)
+
+
+def echoEnd(tag):
+    print("=" * 90)
+    print("☆{}完成[{}]".format(tag, formatDate()))
+    print("=" * 90)
+    print("\n")
+
+
+def echoInfo(msg):
+    print("|-{}".format(msg))
+
+# ---------------------------------------------------------------------------------
+# 打印相关 END
+# ---------------------------------------------------------------------------------

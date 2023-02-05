@@ -56,15 +56,17 @@ Install_mysql()
 	    cpuCore="1"
 	fi
 
-	if [ "$cpuCore" -gt "1" ];then
+	if [ "$cpuCore" -gt "2" ];then
 		cpuCore=`echo "$cpuCore" | awk '{printf("%.f",($1)*0.8)}'`
+	else
+		cpuCore="1"
 	fi
 	# ----- cpu end ------
 
 	cd ${rootPath}/plugins/mysql/lib && /bin/bash rpcgen.sh
 
 	if [ ! -f ${mysqlDir}/mysql-boost-${VERSION}.tar.gz ];then
-		wget -O ${mysqlDir}/mysql-boost-${VERSION}.tar.gz --tries=3 https://cdn.mysql.com/archives/mysql-5.7/mysql-boost-${VERSION}.tar.gz
+		wget --no-check-certificate -O ${mysqlDir}/mysql-boost-${VERSION}.tar.gz --tries=3 https://cdn.mysql.com/archives/mysql-5.7/mysql-boost-${VERSION}.tar.gz
 	fi
 
 	#检测文件是否损坏.
@@ -76,7 +78,7 @@ Install_mysql()
 		else
 			# 重新下载
 			rm -rf ${mysqlDir}/mysql-${VERSION}
-			wget -O ${mysqlDir}/mysql-boost-${VERSION}.tar.gz --tries=3 https://cdn.mysql.com/archives/mysql-5.7/mysql-boost-${VERSION}.tar.gz
+			wget --no-check-certificate -O ${mysqlDir}/mysql-boost-${VERSION}.tar.gz --tries=3 https://cdn.mysql.com/archives/mysql-5.7/mysql-boost-${VERSION}.tar.gz
 		fi
 	fi
 

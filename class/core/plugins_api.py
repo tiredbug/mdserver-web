@@ -1,5 +1,18 @@
 # coding: utf-8
 
+# ---------------------------------------------------------------------------------
+# MW-Linux面板
+# ---------------------------------------------------------------------------------
+# copyright (c) 2018-∞(https://github.com/midoks/mdserver-web) All rights reserved.
+# ---------------------------------------------------------------------------------
+# Author: midoks <midoks@163.com>
+# ---------------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------------
+# 插件操作
+# ---------------------------------------------------------------------------------
+
+
 import psutil
 import time
 import os
@@ -14,7 +27,7 @@ import sys
 import threading
 import multiprocessing
 
-
+from flask import render_template
 from flask import request
 
 
@@ -62,12 +75,35 @@ class plugins_api:
         data = self.getPluginList(sType, int(sPage))
         return mw.getJson(data)
 
+    def menuGetAbsPath(self, tag, path):
+        if path[0:1] == '/':
+            return path
+        else:
+            return mw.getPluginDir() + '/' + tag + '/' + path
+
+    def menuApi(self):
+        import config_api
+        data = config_api.config_api().get()
+        tag = request.args.get('tag', '')
+        menu_file = 'data/hook_menu.json'
+        content = ''
+        if os.path.exists(menu_file):
+            t = mw.readFile(menu_file)
+            tlist = json.loads(t)
+            for menu_data in tlist:
+                if 'path' in menu_data:
+                    tpath = self.menuGetAbsPath(tag, menu_data['path'])
+                    content = mw.readFile(tpath)
+        data['plugin_content'] = content
+        return render_template('plugin_menu.html', data=data)
+
     def fileApi(self):
         name = request.args.get('name', '')
         if name.strip() == '':
             return ''
 
         f = request.args.get('f', '')
+
         if f.strip() == '':
             return ''
 
@@ -75,8 +111,16 @@ class plugins_api:
         if not os.path.exists(file):
             return ''
 
-        c = open(file, 'rb').read()
-        return c
+        suffix = mw.getPathSuffix(file)
+        if suffix == '.css':
+            content = mw.readFile(file)
+            from flask import Response
+            from flask import make_response
+            v = Response(content, headers={
+                         'Content-Type': 'text/css; charset="utf-8"'})
+            return make_response(v)
+        content = open(file, 'rb').read()
+        return content
 
     def indexListApi(self):
         data = self.getIndexList()
@@ -90,6 +134,63 @@ class plugins_api:
         if data:
             return mw.returnJson(True, '成功!')
         return mw.returnJson(False, '失败!')
+
+    def initApi(self):
+
+        plugin_names = {
+            'openresty': '1.21.4.1',
+            'php': '56',
+            'swap': '1.1',
+            'mysql': '5.7',
+            'phpmyadmin': '4.4.15',
+        }
+
+        pn_dir = mw.getPluginDir()
+        pn_server_dir = mw.getServerDir()
+        pn_list = []
+        for pn in plugin_names:
+            info = {}
+            pn_json = pn_dir + '/' + pn + '/info.json'
+            pn_server = pn_server_dir + '/' + pn
+            if not os.path.exists(pn_server):
+
+                tmp = mw.readFile(pn_json)
+                tmp = json.loads(tmp)
+
+                info['title'] = tmp['title']
+                info['name'] = tmp['name']
+                info['versions'] = tmp['versions']
+                info['default_ver'] = plugin_names[pn]
+                pn_list.append(info)
+            else:
+                return mw.returnJson(False, 'ok')
+
+        return mw.returnJson(True, 'ok', pn_list)
+
+    def initInstallApi(self):
+        pn_list = request.form.get('list', '')
+        try:
+            pn_list = json.loads(pn_list)
+
+            for pn in pn_list:
+                name = pn['name']
+                version = pn['version']
+                infoJsonPos = self.__plugin_dir + '/' + name + '/' + 'info.json'
+                pluginInfo = json.loads(mw.readFile(infoJsonPos))
+                self.hookInstall(pluginInfo)
+                execstr = 'cd ' + mw.getPluginDir() + '/' + name + ' && bash ' + \
+                    pluginInfo['shell'] + ' install ' + version
+
+                taskAdd = ('安装[' + name + '-' + version + ']',
+                           'execshell', '0', time.strftime('%Y-%m-%d %H:%M:%S'), execstr)
+
+                mw.M('tasks').add('name,type,status,addtime, execstr', taskAdd)
+            os.mkdir(mw.getServerDir() + '/php')
+            # 任务执行相关
+            mw.triggerTask()
+            return mw.returnJson(True, '添加成功')
+        except Exception as e:
+            return mw.returnJson(False, mw.getTracebackInfo())
 
     def installApi(self):
         rundir = mw.getRunDir()
@@ -116,17 +217,16 @@ class plugins_api:
         pluginInfo = json.loads(mw.readFile(infoJsonPos))
         self.hookInstall(pluginInfo)
 
-        execstr = "cd " + os.getcwd() + "/plugins/" + \
-            name + " && /bin/bash " + pluginInfo["shell"] \
-            + " install " + version
+        execstr = 'cd ' + mw.getPluginDir() + '/' + name + ' && bash ' + \
+            pluginInfo['shell'] + ' install ' + version
 
         if mw.isAppleSystem():
             print(execstr)
 
-        taskAdd = (None, mmsg + '[' + name + '-' + version + ']',
+        taskAdd = (mmsg + '[' + name + '-' + version + ']',
                    'execshell', '0', time.strftime('%Y-%m-%d %H:%M:%S'), execstr)
 
-        mw.M('tasks').add('id,name,type,status,addtime, execstr', taskAdd)
+        mw.M('tasks').add('name,type,status,addtime, execstr', taskAdd)
 
         # 任务执行相关
         mw.triggerTask()
@@ -145,10 +245,7 @@ class plugins_api:
                 isNeedAdd = False
 
         if isNeedAdd:
-            tmp = {}
-            tmp['title'] = info['title']
-            tmp['name'] = info['name']
-            data.append(tmp)
+            data.append(info)
         mw.writeFile(hookPath, json.dumps(data))
 
     def hookUninstallFile(self, hook_name, info):
@@ -164,21 +261,39 @@ class plugins_api:
         mw.writeFile(hookPath, json.dumps(data))
 
     def hookInstall(self, info):
+        valid_hook = ['backup', 'database']
+        valid_list_hook = ['menu']
         if 'hook' in info:
             hooks = info['hook']
-            for x in hooks:
-                if x in ['backup']:
-                    self.hookInstallFile(x, info)
-                    return True
+            for h in hooks:
+                hooks_type = type(h)
+                if hooks_type == dict:
+                    tag = h['tag']
+                    if tag in valid_list_hook:
+                        self.hookInstallFile(tag, h[tag])
+                elif hooks_type == str:
+                    for x in hooks:
+                        if x in valid_hook:
+                            self.hookInstallFile(x, info)
+                            return True
         return False
 
     def hookUninstall(self, info):
+        valid_hook = ['backup', 'database']
+        valid_list_hook = ['menu']
         if 'hook' in info:
             hooks = info['hook']
-            for x in hooks:
-                if x in ['backup']:
-                    self.hookUninstallFile(x, info)
-                    return True
+            for h in hooks:
+                hooks_type = type(h)
+                if hooks_type == dict:
+                    tag = h['tag']
+                    if tag in valid_list_hook:
+                        self.hookUninstallFile(tag, h[tag])
+                elif hooks_type == str:
+                    for x in hooks:
+                        if x in valid_hook:
+                            self.hookUninstallFile(x, info)
+                            return True
         return False
 
     def uninstallOldApi(self):
@@ -549,6 +664,7 @@ class plugins_api:
             "ps": info['ps'],
             "dependnet": "",
             "mutex": "",
+            "icon": "",
             "path": path,
             "install_checks": checks,
             "uninsatll_checks": checks,
@@ -562,6 +678,9 @@ class plugins_api:
             "install_pre_inspection": False,
             "uninstall_pre_inspection": False,
         }
+
+        if 'icon' in info:
+            pInfo['icon'] = info['icon']
 
         if checks.find('VERSION') > -1:
             pInfo['install_checks'] = checks.replace(
@@ -608,6 +727,7 @@ class plugins_api:
     def makeList(self, data, sType='0'):
         plugins_info = []
 
+        # 相应类型
         if (data['pid'] == sType):
             if type(data['versions']) == list and 'coexist' in data and data['coexist']:
                 tmp_data = self.makeCoexist(data)
@@ -618,6 +738,7 @@ class plugins_api:
                 plugins_info.append(pg)
             return plugins_info
 
+        # 全部
         if sType == '0':
             if type(data['versions']) == list and 'coexist' in data and data['coexist']:
                 tmp_data = self.makeCoexist(data)
@@ -626,6 +747,18 @@ class plugins_api:
             else:
                 pg = self.getPluginInfo(data)
                 plugins_info.append(pg)
+
+        # 已经安装
+        if sType == '-1':
+            if type(data['versions']) == list and 'coexist' in data and data['coexist']:
+                tmp_data = self.makeCoexist(data)
+                for index in range(len(tmp_data)):
+                    if tmp_data[index]['setup']:
+                        plugins_info.append(tmp_data[index])
+            else:
+                pg = self.getPluginInfo(data)
+                if pg['setup']:
+                    plugins_info.append(pg)
 
         # print plugins_info, data
         return plugins_info

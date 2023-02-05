@@ -107,7 +107,9 @@ function safeConf() {
                     <span class="tname">访问切换</span>\
                     <select id="access_choose" class="bt-input-text mr20" name="choose" style="width:110px">\
                         <option value="mariadb" '+(cfg['choose']=="mariadb"?"selected='selected'":"")+'>MariaDB</option>\
-                        <option value="mysql" '+ (cfg['choose']==""?"selected='selected'":"")+'>MySQL</option>\
+                        <option value="mysql" '+ (cfg['choose']=="mysql"?"selected='selected'":"")+'>MySQL</option>\
+                        <option value="mysql-apt" '+ (cfg['choose']=="mysql-apt"?"selected='selected'":"")+'>MySQL[APT]</option>\
+                        <option value="mysql-yum" '+ (cfg['choose']=="mysql-yum"?"selected='selected'":"")+'>MySQL[YUM]</option>\
                     </select>\
                     <button class="btn btn-success btn-sm" onclick="setPmaChoose()">保存</button>\
                 </div>\
@@ -120,6 +122,12 @@ function safeConf() {
                     <span class="tname">密码</span>\
                     <input style="width:110px" class="bt-input-text mr20" name="password" id="pmport" value="' + cfg['password'] + '" placeholder="密码" type="text">\
                     <button class="btn btn-success btn-sm" onclick="setPmaPassword()">保存</button>\
+                </div>\
+                <hr/>\
+                <div class="ver line">\
+                    <span class="tname">路径名</span>\
+                    <input style="width:180px" class="bt-input-text mr20" name="path" id="pmport" value="' + cfg['path'] + '" placeholder="" type="text">\
+                    <button class="btn btn-success btn-sm" onclick="setPmaPath()">保存</button>\
                 </div>';
         $(".soft-man-con").html(con);
     });
@@ -145,6 +153,14 @@ function setPmaUsername(){
 function setPmaPassword(){
     var password = $("input[name=password]").val();
     pmaPost('set_pma_password',{'password':password}, function(data){
+        var rdata = $.parseJSON(data.data);
+        layer.msg(rdata.msg, { icon: rdata.status ? 1 : 2 });
+    });
+}
+
+function setPmaPath(){
+    var path = $("input[name=path]").val();
+    pmaPost('set_pma_path',{'path':path}, function(data){
         var rdata = $.parseJSON(data.data);
         layer.msg(rdata.msg, { icon: rdata.status ? 1 : 2 });
     });

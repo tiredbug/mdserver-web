@@ -36,20 +36,24 @@ class backupTools:
                 "----------------------------------------------------------------------------")
             return
 
-        backup_path = mw.getRootDir() + '/backup/site'
+        backup_path = mw.getBackupDir() + '/site'
         if not os.path.exists(backup_path):
             mw.execShell("mkdir -p " + backup_path)
 
         filename = backup_path + "/web_" + name + "_" + \
             time.strftime('%Y%m%d_%H%M%S', time.localtime()) + '.tar.gz'
-        mw.execShell("cd " + os.path.dirname(path) + " && tar zcvf '" +
-                     filename + "' '" + os.path.basename(path) + "' > /dev/null")
+
+        cmd = "cd " + os.path.dirname(path) + " && tar zcvf '" + \
+            filename + "' '" + os.path.basename(path) + "' > /dev/null"
+
+        # print(cmd)
+        mw.execShell(cmd)
 
         endDate = time.strftime('%Y/%m/%d %X', time.localtime())
 
         print(filename)
         if not os.path.exists(filename):
-            log = "网站[" + name + u"]备份失败!"
+            log = "网站[" + name + "]备份失败!"
             print("★[" + endDate + "] " + log)
             print(
                 "----------------------------------------------------------------------------")
@@ -60,7 +64,7 @@ class backupTools:
         sql.table('backup').add('type,name,pid,filename,addtime,size', ('0', os.path.basename(
             filename), pid, filename, endDate, os.path.getsize(filename)))
         log = "网站[" + name + "]备份成功,用时[" + str(round(outTime, 2)) + "]秒"
-        mw.writeLog(u'计划任务', log)
+        mw.writeLog('计划任务', log)
         print("★[" + endDate + "] " + log)
         print("|---保留最新的[" + count + "]份备份")
         print("|---文件名:" + filename)
@@ -93,7 +97,7 @@ class backupTools:
                 "----------------------------------------------------------------------------")
             return
 
-        backup_path = mw.getRootDir() + '/backup/database'
+        backup_path = mw.getBackupDir() + '/database'
         if not os.path.exists(backup_path):
             mw.execShell("mkdir -p " + backup_path)
 
@@ -118,7 +122,10 @@ class backupTools:
         # mw.execShell(db_path + "/bin/mysqldump --skip-lock-tables --default-character-set=utf8 " +
         #              name + " | gzip > " + filename)
 
-        mw.execShell(db_path + "/bin/mysqldump  --single-transaction --quick --default-character-set=utf8 " +
+        # mw.execShell(db_path + "/bin/mysqldump  --single-transaction --quick --default-character-set=utf8 " +
+        #              name + " | gzip > " + filename)
+
+        mw.execShell(db_path + "/bin/mysqldump  --force --opt --default-character-set=utf8 " +
                      name + " | gzip > " + filename)
 
         if not os.path.exists(filename):
@@ -174,17 +181,70 @@ class backupTools:
         for database in databases:
             self.backupDatabase(database['name'], save)
 
+    def findPathName(self, path, filename):
+        f = os.scandir(path)
+        l = []
+        for ff in f:
+            if ff.name.find(filename) > -1:
+                l.append(ff.name)
+        return l
+
+    def backupPath(self, path, count):
+
+        mw.echoStart('备份')
+
+        backup_path = mw.getBackupDir() + '/path'
+        if not os.path.exists(backup_path):
+            mw.execShell("mkdir -p " + backup_path)
+
+        dirname = os.path.basename(path)
+        fname = 'path_{}_{}.tar.gz'.format(
+            dirname, mw.formatDate("%Y%m%d_%H%M%S"))
+        dfile = os.path.join(backup_path, fname)
+
+        p_size = mw.getPathSize(path)
+        stime = time.time()
+
+        cmd = "cd " + os.path.dirname(path) + " && tar zcvf '" + dfile + "' '" + dirname + "' 2>{err_log} 1> /dev/null".format(
+            err_log='/tmp/backup_err.log')
+        mw.execShell(cmd)
+
+        tar_size = os.path.getsize(dfile)
+
+        mw.echoInfo('备份目录：' + path)
+        mw.echoInfo('目录已备份到：' + dfile)
+        mw.echoInfo("目录大小：{}".format(mw.toSize(p_size)))
+        mw.echoInfo("开始压缩文件：{}".format(mw.formatDate(times=stime)))
+        mw.echoInfo("文件压缩完成，耗时{:.2f}秒，压缩包大小：{}".format(
+            time.time() - stime, mw.toSize(tar_size)))
+        mw.echoInfo('保留最新的备份数：' + count + '份')
+
+        backups = self.findPathName(backup_path, 'path_{}'.format(dirname))
+        num = len(backups) - int(count)
+        backups.sort()
+        if num > 0:
+            for backup in backups:
+                abspath_bk = backup_path + "/" + backup
+                mw.execShell("rm -f " + abspath_bk)
+                mw.echoInfo("|---已清理过期备份文件：" + abspath_bk)
+                num -= 1
+                if num < 1:
+                    break
+
+        mw.echoEnd('备份')
 
 if __name__ == "__main__":
     backup = backupTools()
-    type = sys.argv[1]
-    if type == 'site':
+    stype = sys.argv[1]
+    if stype == 'site':
         if sys.argv[2] == 'ALL':
             backup.backupSiteAll(sys.argv[3])
         else:
             backup.backupSite(sys.argv[2], sys.argv[3])
-    elif type == 'database':
+    elif stype == 'database':
         if sys.argv[2] == 'ALL':
             backup.backupDatabaseAll(sys.argv[3])
         else:
             backup.backupDatabase(sys.argv[2], sys.argv[3])
+    elif stype == 'path':
+        backup.backupPath(sys.argv[2], sys.argv[3])

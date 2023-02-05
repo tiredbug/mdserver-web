@@ -1,13 +1,25 @@
 # coding:utf-8
 
+# ---------------------------------------------------------------------------------
+# MW-Linux面板
+# ---------------------------------------------------------------------------------
+# copyright (c) 2018-∞(https://github.com/midoks/mdserver-web) All rights reserved.
+# ---------------------------------------------------------------------------------
+# Author: midoks <midoks@163.com>
+# ---------------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------------
+# 配置文件
+# ---------------------------------------------------------------------------------
+
 
 import time
 import sys
 import random
 import os
 
-chdir = os.getcwd()
-sys.path.append(chdir + '/class/core')
+pwd = os.getcwd()
+sys.path.append(pwd + '/class/core')
 
 import mw
 
@@ -47,8 +59,14 @@ if os.path.exists('data/ipv6.pl'):
 else:
     bind.append('0.0.0.0:%s' % mw_port)
 
+
+# 初始安装时,自动生成安全路径
+if not os.path.exists('data/admin_path.pl'):
+    admin_path = mw.getRandomString(8)
+    mw.writeFile('data/admin_path.pl', '/' + admin_path.lower())
+
 if workers > 2:
-    workers = 2
+    workers = 1
 
 threads = workers * 1
 backlog = 512
@@ -64,6 +82,3 @@ loglevel = 'info'
 errorlog = log_dir + '/error.log'
 accesslog = log_dir + '/access.log'
 pidfile = log_dir + '/mw.pid'
-if os.path.exists(os.getcwd() + '/data/ssl.pl'):
-    certfile = 'ssl/certificate.pem'
-    keyfile = 'ssl/privateKey.pem'

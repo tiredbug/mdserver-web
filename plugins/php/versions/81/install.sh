@@ -16,7 +16,7 @@ function version_lt() { test "$(echo "$@" | tr " " "\n" | sort -rV | head -n 1)"
 function version_ge() { test "$(echo "$@" | tr " " "\n" | sort -rV | head -n 1)" == "$1"; }
 
 
-version=8.1.11
+version=8.1.12
 PHP_VER=81
 Install_php()
 {
@@ -57,6 +57,7 @@ fi
 ZIP_OPTION='--with-zip'
 libzip_version=`pkg-config libzip --modversion`
 if version_lt "$libzip_version" "0.11.0" ;then
+	cd ${rootPath}/plugins/php/lib && /bin/bash libzip.sh
 	export PKG_CONFIG_PATH=$serverPath/lib/libzip/lib/pkgconfig
 	ZIP_OPTION="--with-zip=$serverPath/lib/libzip"
 fi
@@ -79,8 +80,10 @@ else
     cpuCore="1"
 fi
 
-if [ "$cpuCore" -gt "1" ];then
+if [ "$cpuCore" -gt "2" ];then
 	cpuCore=`echo "$cpuCore" | awk '{printf("%.f",($1)*0.8)}'`
+else
+	cpuCore="1"
 fi
 # ----- cpu end ------
 

@@ -42,7 +42,7 @@ Install_lib()
 	fi
 	
 	# cd ${rootPath}/plugins/php/lib && /bin/bash openssl_10.sh
-	if [ "$version" -lt "70" ];then
+	if [ "$version" -lt "81" ];then
 		cd ${rootPath}/plugins/php/lib && /bin/bash openssl_10.sh
 	fi
 
@@ -63,8 +63,9 @@ Install_lib()
 			mv config0.m4 config.m4
 		fi
 		
-		openssl_version=`pkg-config openssl --modversion`
-		if [ "$version" -lt "70" ];then
+		# openssl_version=`pkg-config openssl --modversion`
+		# export PKG_CONFIG_PATH=$serverPath/lib/openssl10/lib/pkgconfig
+		if [ "$version" -lt "81" ];then
 			export PKG_CONFIG_PATH=$serverPath/lib/openssl10/lib/pkgconfig
 		fi
 
@@ -83,6 +84,11 @@ Install_lib()
     echo "" >> $serverPath/php/$version/etc/php.ini
 	echo "[${LIBNAME}]" >> $serverPath/php/$version/etc/php.ini
 	echo "extension=${LIBNAME}.so" >> $serverPath/php/$version/etc/php.ini
+	if [ -f "/etc/ssl/certs/ca-certificates.crt" ];then
+		echo "openssl.cafile=/etc/ssl/certs/ca-certificates.crt" >> $serverPath/php/$version/etc/php.ini
+	elif [ -f "/etc/pki/tls/certs/ca-bundle.crt" ];then
+		echo "openssl.cafile=/etc/pki/tls/certs/ca-bundle.crt" >> $serverPath/php/$version/etc/php.ini
+	fi
 	
 	bash ${rootPath}/plugins/php/versions/lib.sh $version restart
 	echo '==========================================================='

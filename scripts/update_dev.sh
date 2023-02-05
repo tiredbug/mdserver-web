@@ -14,6 +14,11 @@ if [ "$EUID" -ne 0 ]
   exit
 fi
 
+if [ ${_os} != "Darwin" ] && [ ! -d /www/server/mdserver-web/logs ]; then
+	mkdir -p /www/server/mdserver-web/logs
+fi
+
+{
 
 if [ ${_os} == "Darwin" ]; then
 	OSNAME='macos'
@@ -51,28 +56,46 @@ fi
 
 cn=$(curl -fsSL -m 10 http://ipinfo.io/json | grep "\"country\": \"CN\"")
 if [ ! -z "$cn" ];then
-	wget -O /tmp/dev.zip https://gitee.com/midoks/mdserver-web/repository/archive/dev.zip
+	curl -sSLo /tmp/dev.zip https://gitee.com/midoks/mdserver-web/repository/archive/dev.zip
 else
-	wget -O /tmp/dev.zip https://github.com/midoks/mdserver-web/archive/refs/heads/dev.zip
+	curl -sSLo /tmp/dev.zip https://github.com/midoks/mdserver-web/archive/refs/heads/dev.zip
 fi
 
 # wget -O /tmp/dev.zip https://github.com/midoks/mdserver-web/archive/refs/heads/dev.zip
 cd /tmp && unzip /tmp/dev.zip
-cp -rf /tmp/mdserver-web-dev/* /www/server/mdserver-web
+
+echo "update mdserver-web code start"
+if [ -f /usr/bin/cp ];then
+	/usr/bin/cp -rf /tmp/mdserver-web-dev/* /www/server/mdserver-web
+elif [ -f /bin/cp ];then
+	/bin/cp -rf /tmp/mdserver-web-dev/* /www/server/mdserver-web
+else
+	/usr/bin/cp -rf /tmp/mdserver-web-dev/* /www/server/mdserver-web
+fi
+echo "update mdserver-web code end"
+
 rm -rf /tmp/dev.zip
 rm -rf /tmp/mdserver-web-dev
 
 #pip uninstall public
 echo "use system version: ${OSNAME}"
-
 cd /www/server/mdserver-web && bash scripts/update/${OSNAME}.sh
+
+bash /etc/rc.d/init.d/mw restart
+bash /etc/rc.d/init.d/mw default
+
+if [ -f /usr/bin/mw ];then
+	rm -rf /usr/bin/mw
+fi
 
 if [ ! -e /usr/bin/mw ]; then
 	if [ ! -f /usr/bin/mw ];then
-		ln -s /etc/init.d/mw /usr/bin/mw
+		ln -s /etc/rc.d/init.d/mw /usr/bin/mw
 	fi
 fi
 
 endTime=`date +%s`
 ((outTime=($endTime-$startTime)/60))
 echo -e "Time consumed:\033[32m $outTime \033[0mMinute!"
+
+} 1> >(tee /www/server/mdserver-web/logs/mw-update.log) 2>&1

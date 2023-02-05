@@ -21,7 +21,6 @@ if [ "$version" -lt "70" ];then
 	LIBV=1.2.5
 fi
 
-
 LIB_PATH_NAME=lib/php
 if [ -d $serverPath/php/${version}/lib64 ];then
 	LIB_PATH_NAME=lib64

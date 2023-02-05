@@ -14,6 +14,11 @@ if [ "$EUID" -ne 0 ]
   exit
 fi
 
+if [ ${_os} != "Darwin" ] && [ ! -d /www/server/mdserver-web/logs ]; then
+	mkdir -p /www/server/mdserver-web/logs
+fi
+
+{
 
 if [ ${_os} == "Darwin" ]; then
 	OSNAME='macos'
@@ -52,14 +57,20 @@ fi
 
 cn=$(curl -fsSL -m 10 http://ipinfo.io/json | grep "\"country\": \"CN\"")
 if [ ! -z "$cn" ];then
-	wget -O /tmp/master.zip https://gitee.com/midoks/mdserver-web/repository/archive/master.zip
+	curl -sSLo /tmp/master.zip https://gitee.com/midoks/mdserver-web/repository/archive/master.zip
 else
-	wget -O /tmp/master.zip https://codeload.github.com/midoks/mdserver-web/zip/master
+	curl -sSLo /tmp/master.zip https://codeload.github.com/midoks/mdserver-web/zip/master
 fi
 
 
 cd /tmp && unzip /tmp/master.zip
-/usr/bin/cp -rf  /tmp/mdserver-web-master/* /www/server/mdserver-web
+
+CP_CMD=/usr/bin/cp
+if [ -f /bin/cp ];then
+		CP_CMD=/bin/cp
+fi
+$CP_CMD -rf /tmp/mdserver-web-dev/* /www/server/mdserver-web
+
 rm -rf /tmp/master.zip
 rm -rf /tmp/mdserver-web-master
 
@@ -67,12 +78,21 @@ rm -rf /tmp/mdserver-web-master
 echo "use system version: ${OSNAME}"
 cd /www/server/mdserver-web && bash scripts/update/${OSNAME}.sh
 
+bash /etc/rc.d/init.d/mw restart
+bash /etc/rc.d/init.d/mw default
+
+if [ -f /usr/bin/mw ];then
+	rm -rf /usr/bin/mw
+fi
+
 if [ ! -e /usr/bin/mw ]; then
 	if [ ! -f /usr/bin/mw ];then
-		ln -s /etc/init.d/mw /usr/bin/mw
+		ln -s /etc/rc.d/init.d/mw /usr/bin/mw
 	fi
 fi
 
 endTime=`date +%s`
 ((outTime=($endTime-$startTime)/60))
 echo -e "Time consumed:\033[32m $outTime \033[0mMinute!"
+
+} 1> >(tee /www/server/mdserver-web/logs/mw-update.log) 2>&1

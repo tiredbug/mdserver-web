@@ -1,5 +1,18 @@
 # coding: utf-8
 
+# ---------------------------------------------------------------------------------
+# MW-Linux面板
+# ---------------------------------------------------------------------------------
+# copyright (c) 2018-∞(https://github.com/midoks/mdserver-web) All rights reserved.
+# ---------------------------------------------------------------------------------
+# Author: midoks <midoks@163.com>
+# ---------------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------------
+# 防火墙操作
+# ---------------------------------------------------------------------------------
+
+
 import psutil
 import time
 import os
@@ -15,10 +28,14 @@ from flask import request
 class firewall_api:
 
     __isFirewalld = False
+    __isIptables = False
     __isUfw = False
     __isMac = False
 
     def __init__(self):
+        iptables_file = mw.systemdCfgDir() + '/iptables.service'
+        if os.path.exists(iptables_file):
+            self.__isIptables = True
         if os.path.exists('/usr/sbin/firewalld'):
             self.__isFirewalld = True
         if os.path.exists('/usr/sbin/ufw'):
@@ -42,13 +59,15 @@ class firewall_api:
         if self.__isUfw:
             mw.execShell('ufw deny from ' + address + ' to any')
         else:
-            if self.__isFirewalld:
+            if self.__isIptables:
+                cmd = 'iptables -I INPUT -s ' + address + ' -j DROP'
+                mw.execShell(cmd)
+            elif self.__isFirewalld:
                 cmd = 'firewall-cmd --permanent --add-rich-rule=\'rule family=ipv4 source address="' + \
                     address + '" drop\''
                 mw.execShell(cmd)
             else:
-                cmd = 'iptables -I INPUT -s ' + address + ' -j DROP'
-                mw.execShell(cmd)
+                pass
 
         msg = mw.getInfo('屏蔽IP[{1}]成功!', (address,))
         mw.writeLog("防火墙管理", msg)
@@ -104,15 +123,14 @@ class firewall_api:
         address = port
         if self.__isUfw:
             mw.execShell('ufw delete deny from ' + address + ' to any')
+        elif self.__isIptables:
+            cmd = 'iptables -D INPUT -s ' + address + ' -j DROP'
+            mw.execShell(cmd)
+        elif self.__isFirewalld:
+            mw.execShell(
+                'firewall-cmd --permanent --remove-rich-rule=\'rule family=ipv4 source address="' + address + '" drop\'')
         else:
-            if self.__isFirewalld:
-                mw.execShell(
-                    'firewall-cmd --permanent --remove-rich-rule=\'rule family=ipv4 source address="' + address + '" drop\'')
-            elif self.__isMac:
-                pass
-            else:
-                cmd = 'iptables -D INPUT -s ' + address + ' -j DROP'
-                mw.execShell(cmd)
+            pass
 
         msg = mw.getInfo('解除IP[{1}]的屏蔽!', (address,))
         mw.writeLog("防火墙管理", msg)
@@ -131,15 +149,16 @@ class firewall_api:
                 return mw.returnJson(False, '失败，不能删除当前面板端口!')
             if self.__isUfw:
                 mw.execShell('ufw delete allow ' + port + '/tcp')
+            elif self.__isIptables:
+                mw.execShell(
+                    'iptables -D INPUT -p tcp -m state --state NEW -m tcp --dport ' + port + ' -j ACCEPT')
+            elif self.__isFirewalld:
+                mw.execShell(
+                    'firewall-cmd --permanent --zone=public --remove-port=' + port + '/tcp')
+                mw.execShell(
+                    'firewall-cmd --permanent --zone=public --remove-port=' + port + '/udp')
             else:
-                if self.__isFirewalld:
-                    mw.execShell(
-                        'firewall-cmd --permanent --zone=public --remove-port=' + port + '/tcp')
-                    mw.execShell(
-                        'firewall-cmd --permanent --zone=public --remove-port=' + port + '/udp')
-                else:
-                    mw.execShell(
-                        'iptables -D INPUT -p tcp -m state --state NEW -m tcp --dport ' + port + ' -j ACCEPT')
+                pass
             msg = mw.getInfo('删除防火墙放行端口[{1}]成功!', (port,))
             mw.writeLog("防火墙管理", msg)
             mw.M('firewall').where("id=?", (sid,)).delete()
@@ -165,6 +184,8 @@ class firewall_api:
         return self.getLogList(int(p), int(limit), search)
 
     def getSshInfoApi(self):
+        data = {}
+
         file = '/etc/ssh/sshd_config'
         conf = mw.readFile(file)
         rep = "#*Port\s+([0-9]+)\s*\n"
@@ -176,39 +197,40 @@ class firewall_api:
                 isPing = True
             else:
                 file = '/etc/sysctl.conf'
-                conf = mw.readFile(file)
+                sys_conf = mw.readFile(file)
                 rep = "#*net\.ipv4\.icmp_echo_ignore_all\s*=\s*([0-9]+)"
-                tmp = re.search(rep, conf).groups(0)[0]
+                tmp = re.search(rep, sys_conf).groups(0)[0]
                 if tmp == '1':
                     isPing = False
         except:
             isPing = True
 
-        import system_api
-        panelsys = system_api.system_api()
-        version = panelsys.getSystemVersion()
-        if os.path.exists('/usr/bin/apt-get'):
-            if os.path.exists('/etc/init.d/sshd'):
-                cmd = "service sshd status | grep -P '(dead|stop)'|grep -v grep"
-                status = mw.execShell(cmd)
-            else:
-                cmd = "service ssh status | grep -P '(dead|stop)'|grep -v grep"
-                status = mw.execShell(cmd)
-        else:
-            if version.find(' 7.') != -1:
-                cmd = "systemctl status sshd.service | grep 'dead'|grep -v grep"
-                status = mw.execShell(cmd)
-            else:
-                cmd = "/etc/init.d/sshd status | grep -e 'stopped' -e '已停'|grep -v grep"
-                status = mw.execShell(cmd)
-        if len(status[0]) > 3:
+        # sshd 检测
+        status = True
+        cmd = "service sshd status | grep -P '(dead|stop)'|grep -v grep"
+        ssh_status = mw.execShell(cmd)
+        if ssh_status[0] != '':
             status = False
-        else:
-            status = True
 
-        data = {}
+        cmd = "systemctl status sshd.service | grep 'dead'|grep -v grep"
+        ssh_status = mw.execShell(cmd)
+        if ssh_status[0] != '':
+            status = False
+
+        data['pass_prohibit_status'] = False
+        # 密码登陆配置检查
+        pass_rep = "#PasswordAuthentication\s+(\w*)\s*\n"
+        pass_status = re.search(pass_rep, conf)
+        if pass_status:
+            data['pass_prohibit_status'] = True
+
+        if not data['pass_prohibit_status']:
+            pass_rep = "PasswordAuthentication\s+(\w*)\s*\n"
+            pass_status = re.search(pass_rep, conf)
+            if pass_status and pass_status.groups(0)[0].strip() == 'no':
+                data['pass_prohibit_status'] = True
+
         data['port'] = port
-
         data['status'] = status
         data['ping'] = isPing
         if mw.isAppleSystem():
@@ -222,7 +244,7 @@ class firewall_api:
         if int(port) < 22 or int(port) > 65535:
             return mw.returnJson(False, '端口范围必需在22-65535之间!')
 
-        ports = ['21', '25', '80', '443', '7200', '8080', '888', '8888']
+        ports = ['21', '25', '80', '443', '888']
         if port in ports:
             return mw.returnJson(False, '(' + port + ')' + '特殊端口不可设置!')
 
@@ -233,24 +255,15 @@ class firewall_api:
         conf = re.sub(rep, "Port " + port + "\n", conf)
         mw.writeFile(file, conf)
 
-        if self.__isFirewalld:
-            mw.execShell('setenforce 0')
-            mw.execShell(
-                'sed -i "s#SELINUX=enforcing#SELINUX=disabled#" /etc/selinux/config')
-            mw.execShell("systemctl restart sshd.service")
-        elif self.__isUfw:
-            mw.execShell('ufw allow ' + port + '/tcp')
+        self.addAcceptPortArgs(port, 'SSH端口修改', 'port')
+        if self.__isUfw:
             mw.execShell("service ssh restart")
-        else:
-            mw.execShell(
-                'iptables -I INPUT -p tcp -m state --state NEW -m tcp --dport ' + port + ' -j ACCEPT')
+        elif self.__isIptables:
             mw.execShell("/etc/init.d/sshd restart")
-
-        self.firewallReload()
-        # mw.M('firewall').where(
-        #     "ps=?", ('SSH远程管理服务',)).setField('port', port)
-        msg = mw.getInfo('改SSH端口为[{1}]成功!', port)
-        mw.writeLog("防火墙管理", msg)
+        elif self.__isFirewalld:
+            mw.execShell("systemctl restart sshd.service")
+        else:
+            return mw.returnJson(False, '修改失败!')
         return mw.returnJson(True, '修改成功!')
 
     def setSshStatusApi(self):
@@ -258,23 +271,49 @@ class firewall_api:
             return mw.returnJson(True, '开发机不能操作!')
 
         status = request.form.get('status', '1').strip()
-        version = mw.readFile('/etc/redhat-release')
-        if int(status) == 1:
+        msg = 'SSH服务已启用'
+        act = 'start'
+        if status == "1":
             msg = 'SSH服务已停用'
             act = 'stop'
-        else:
-            msg = 'SSH服务已启用'
-            act = 'start'
 
-        if not os.path.exists('/etc/redhat-release'):
-            mw.execShell('service ssh ' + act)
-        elif version.find(' 7.') != -1:
+        ssh_service = mw.systemdCfgDir() + '/sshd.service'
+        if os.path.exists(ssh_service):
             mw.execShell("systemctl " + act + " sshd.service")
         else:
-            mw.execShell("/etc/init.d/sshd " + act)
+            mw.execShell('service sshd ' + act)
+
+        if os.path.exists('/etc/init.d/sshd'):
+            mw.execShell('/etc/init.d/sshd ' + act)
 
         mw.writeLog("防火墙管理", msg)
         return mw.returnJson(True, '操作成功!')
+
+    def setSshPassStatusApi(self):
+        if mw.isAppleSystem():
+            return mw.returnJson(True, '开发机不能操作!')
+
+        status = request.form.get('status', '1').strip()
+        msg = '禁止密码登陆成功'
+        if status == "1":
+            msg = '开启密码登陆成功'
+
+        file = '/etc/ssh/sshd_config'
+        if not os.path.exists(file):
+            return mw.returnJson(False, '无法设置!')
+
+        conf = mw.readFile(file)
+
+        if status == '1':
+            rep = "(#)?PasswordAuthentication\s+(\w*)\s*\n"
+            conf = re.sub(rep, "PasswordAuthentication yes\n", conf)
+        else:
+            rep = "(#)?PasswordAuthentication\s+(\w*)\s*\n"
+            conf = re.sub(rep, "PasswordAuthentication no\n", conf)
+        mw.writeFile(file, conf)
+        mw.execShell("systemctl restart sshd.service")
+        mw.writeLog("SSH管理", msg)
+        return mw.returnJson(True, msg)
 
     def setPingApi(self):
         if mw.isAppleSystem():
@@ -300,29 +339,52 @@ class firewall_api:
         status = request.form.get('status', '1')
         return mw.getJson(self.setFw(status))
 
+    def setFwIptables(self, status):
+        # iptables特殊处理
+        if status == '1':
+            mw.execShell('service iptables save')
+            mw.execShell('service iptables stop')
+        else:
+            # 重新导入数据
+            _list = mw.M('firewall').field('id,port,ps,addtime').limit(
+                '0,1000').order('id desc').select()
+
+            mw.execShell('iptables -P INPUT DROP')
+            mw.execShell('iptables -P OUTPUT ACCEPT')
+            for x in _list:
+                port = x['port']
+                if mw.isIpAddr(port):
+                    cmd = 'iptables -I INPUT -s ' + port + ' -j DROP'
+                    mw.execShell(cmd)
+                else:
+                    self.addAcceptPort(port)
+
+            mw.execShell('service iptables save')
+            mw.execShell('service iptables start')
+
     def setFw(self, status):
+
+        if self.__isIptables:
+            self.setFwIptables(status)
+            return mw.returnData(True, '设置成功!')
+
         if status == '1':
             if self.__isUfw:
                 mw.execShell('/usr/sbin/ufw disable')
-            if self.__isFirewalld:
+
+            elif self.__isFirewalld:
                 mw.execShell('systemctl stop firewalld.service')
                 mw.execShell('systemctl disable firewalld.service')
-            elif self.__isMac:
-                pass
             else:
-                mw.execShell('/etc/init.d/iptables save')
-                mw.execShell('/etc/init.d/iptables stop')
+                pass
         else:
             if self.__isUfw:
-                mw.execShell("echo 'y'|sudo ufw enable")
-            if self.__isFirewalld:
+                mw.execShell("echo 'y'| ufw enable")
+            elif self.__isFirewalld:
                 mw.execShell('systemctl start firewalld.service')
                 mw.execShell('systemctl enable firewalld.service')
-            elif self.__isMac:
-                pass
             else:
-                mw.execShell('/etc/init.d/iptables save')
-                mw.execShell('/etc/init.d/iptables restart')
+                pass
 
         return mw.returnData(True, '设置成功!')
 
@@ -376,27 +438,28 @@ class firewall_api:
     def addAcceptPort(self, port):
         if self.__isUfw:
             mw.execShell('ufw allow ' + port + '/tcp')
+        elif self.__isIptables:
+            cmd = 'iptables -I INPUT -p tcp -m state --state NEW -m tcp --dport ' + port + ' -j ACCEPT'
+            mw.execShell(cmd)
         elif self.__isFirewalld:
             port = port.replace(':', '-')
             cmd = 'firewall-cmd --permanent --zone=public --add-port=' + port + '/tcp'
             mw.execShell(cmd)
-        elif self.__isMac:
-            pass
         else:
-            cmd = 'iptables -I INPUT -p tcp -m state --state NEW -m tcp --dport ' + port + ' -j ACCEPT'
-            mw.execShell(cmd)
+            pass
+        return True
 
     def firewallReload(self):
         if self.__isUfw:
             mw.execShell('/usr/sbin/ufw reload')
             return
-        if self.__isFirewalld:
+        elif self.__isIptables:
+            mw.execShell('service iptables save')
+            mw.execShell('service iptables restart')
+        elif self.__isFirewalld:
             mw.execShell('firewall-cmd --reload')
-        elif self.__isMac:
-            pass
         else:
-            mw.execShell('/etc/init.d/iptables save')
-            mw.execShell('/etc/init.d/iptables restart')
+            pass
 
     def getFwStatus(self):
         if self.__isUfw:
@@ -405,17 +468,17 @@ class firewall_api:
             if data[0].strip() == 'inactive':
                 return False
             return True
-        if self.__isFirewalld:
+        elif self.__isIptables:
+            cmd = "systemctl status iptables | grep 'inactive'"
+            data = mw.execShell(cmd)
+            if data[0] != '':
+                return False
+            return True
+        elif self.__isFirewalld:
             cmd = "ps -ef|grep firewalld |grep -v grep | awk '{print $2}'"
             data = mw.execShell(cmd)
             if data[0] == '':
                 return False
             return True
-        elif self.__isMac:
-            return False
         else:
-            cmd = "ps -ef|grep iptables |grep -v grep  | awk '{print $2}'"
-            data = mw.execShell(cmd)
-            if data[0] == '':
-                return False
-            return True
+            return False

@@ -54,14 +54,16 @@ Install_mysql()
 	    cpuCore="1"
 	fi
 
-	if [ "$cpuCore" -gt "1" ];then
+	if [ "$cpuCore" -gt "2" ];then
 		cpuCore=`echo "$cpuCore" | awk '{printf("%.f",($1)*0.8)}'`
+	else
+		cpuCore="1"
 	fi
 	# ----- cpu end ------
 	
 
 	if [ ! -f ${mysqlDir}/mysql-5.6.50.tar.gz ];then
-		wget -O ${mysqlDir}/mysql-5.6.50.tar.gz --tries=3 https://cdn.mysql.com/Downloads/MySQL-5.6/mysql-5.6.50.tar.gz
+		wget --no-check-certificate -O ${mysqlDir}/mysql-5.6.50.tar.gz --tries=3 https://cdn.mysql.com/Downloads/MySQL-5.6/mysql-5.6.50.tar.gz
 	fi
 
 	if [ ! -d ${mysqlDir}/mysql-5.6.50 ];then
